@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from browser_plane.cli import _try_worker_lock
 from browser_plane.config import RuntimePaths
 from browser_plane.db import JobStore, RuntimeDB
 from browser_plane.executor import BrowserExecutor, CapabilityError
@@ -41,7 +42,7 @@ class DBTests(unittest.TestCase):
     def test_wal_full_busy_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             _, db, _ = make_runtime(tmp)
-            with db.connect() as conn:
+            with db.connection() as conn:
                 self.assertEqual(conn.execute("PRAGMA journal_mode").fetchone()[0], "wal")
                 self.assertEqual(conn.execute("PRAGMA synchronous").fetchone()[0], 2)
                 self.assertGreaterEqual(conn.execute("PRAGMA busy_timeout").fetchone()[0], 5000)
@@ -102,6 +103,61 @@ class ProcessRegistryTests(unittest.TestCase):
                 )
                 self.assertTrue(registry.verify_owned(process_id))
                 self.assertTrue(registry.terminate_owned(process_id, grace_sec=1.0))
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait(timeout=2)
+
+
+class RecoveryTests(unittest.TestCase):
+    def test_worker_lock_is_exclusive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, _, _ = make_runtime(tmp)
+            first = _try_worker_lock(paths)
+            self.assertIsNotNone(first)
+            try:
+                self.assertIsNone(_try_worker_lock(paths))
+            finally:
+                assert first is not None
+                first.close()
+            second = _try_worker_lock(paths)
+            self.assertIsNotNone(second)
+            assert second is not None
+            second.close()
+
+    def test_startup_recovery_reaps_owned_process_and_releases_leases(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, jobs = make_runtime(tmp)
+            job_id = jobs.submit(JobSpec(task_type=TaskType.FETCH, url="data:text/plain,recovery"))
+            self.assertTrue(jobs.transition(job_id, {JobState.QUEUED}, JobState.RUNNING))
+
+            leases = LeaseManager(db)
+            profile_epoch = leases.acquire_profile("development", job_id)
+            self.assertIsNotNone(profile_epoch)
+            control_epoch = leases.acquire_control("session-recovery", job_id, "PLAYWRIGHT")
+            self.assertIsNotNone(control_epoch)
+
+            proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            registry = BrowserProcessRegistry(db)
+            try:
+                process_id = registry.register(
+                    pid=proc.pid,
+                    job_id=job_id,
+                    runtime_kind="TEST",
+                    profile_id=None,
+                    user_data_dir=None,
+                )
+                report = Worker(paths, db).recover_startup()
+                self.assertIn(job_id, report["recovered"])
+                row = jobs.get(job_id)
+                self.assertEqual(row["state"], JobState.RECOVERY_REQUIRED.value)
+                self.assertEqual(row["failure_class"], "STATE_RECOVERY_REQUIRED")
+                proc.wait(timeout=3)
+                process_row = registry.get(process_id)
+                self.assertNotEqual(process_row["shutdown_state"], "RUNNING")
+                with db.connection() as conn:
+                    self.assertEqual(conn.execute("SELECT COUNT(*) FROM profile_leases WHERE owner_job_id=?", (job_id,)).fetchone()[0], 0)
+                    self.assertEqual(conn.execute("SELECT COUNT(*) FROM control_leases WHERE owner_job_id=?", (job_id,)).fetchone()[0], 0)
             finally:
                 if proc.poll() is None:
                     proc.kill()

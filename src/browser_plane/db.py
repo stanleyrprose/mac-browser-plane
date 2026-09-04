@@ -102,8 +102,16 @@ class RuntimeDB:
 
     def initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with self.connect() as conn:
+        with self.connection() as conn:
             conn.executescript(SCHEMA)
+
+    @contextmanager
+    def connection(self) -> Iterator[sqlite3.Connection]:
+        conn = self.connect()
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     @contextmanager
     def immediate(self) -> Iterator[sqlite3.Connection]:
@@ -128,7 +136,7 @@ class JobStore:
         queue_deadline = now + timedelta(seconds=max(1, spec.queue_timeout_sec))
         spec_json = json.dumps(spec.__dict__, default=str, sort_keys=True)
         if spec.idempotency_key:
-            with self.db.connect() as conn:
+            with self.db.connection() as conn:
                 existing = conn.execute(
                     "SELECT job_id FROM jobs WHERE idempotency_key=?",
                     (spec.idempotency_key,),
@@ -157,9 +165,24 @@ class JobStore:
         return job_id
 
     def get(self, job_id: str) -> dict[str, Any] | None:
-        with self.db.connect() as conn:
+        with self.db.connection() as conn:
             row = conn.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
         return dict(row) if row else None
+
+    def recovery_candidates(self) -> list[dict[str, Any]]:
+        states = (
+            JobState.RUNNING.value,
+            JobState.PAUSED_FOR_INSPECTION.value,
+            JobState.WAITING_HUMAN.value,
+            JobState.CANCEL_REQUESTED.value,
+        )
+        placeholders = ",".join("?" for _ in states)
+        with self.db.connection() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM jobs WHERE state IN ({placeholders}) ORDER BY created_at",
+                states,
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def next_runnable(self) -> dict[str, Any] | None:
         now = iso()

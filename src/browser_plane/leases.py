@@ -125,8 +125,20 @@ class LeaseManager:
             )
             return cur.rowcount == 1
 
+    def release_for_job(self, job_id: str) -> dict[str, int]:
+        with self.db.immediate() as conn:
+            profile = conn.execute(
+                "DELETE FROM profile_leases WHERE owner_job_id=?",
+                (job_id,),
+            ).rowcount
+            control = conn.execute(
+                "DELETE FROM control_leases WHERE owner_job_id=?",
+                (job_id,),
+            ).rowcount
+        return {"profile_leases": int(profile), "control_leases": int(control)}
+
     def list_stale_profiles(self) -> list[dict[str, object]]:
-        with self.db.connect() as conn:
+        with self.db.connection() as conn:
             rows = conn.execute(
                 "SELECT * FROM profile_leases WHERE expires_at <= ? ORDER BY expires_at",
                 (iso(),),

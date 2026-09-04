@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from .config import RuntimePaths
 from .db import JobStore, RuntimeDB
@@ -36,6 +37,17 @@ def _print(data: object) -> None:
     print(json.dumps(data, indent=2, sort_keys=True, default=str))
 
 
+def _try_worker_lock(paths: RuntimePaths) -> TextIO | None:
+    target = paths.run_dir / "worker.lock"
+    handle = target.open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.close()
+        return None
+    return handle
+
+
 def cmd_init(_: argparse.Namespace) -> int:
     paths, db, _ = _runtime()
     _print({"status": "INITIALIZED", "home": str(paths.root), "db": str(db.path)})
@@ -54,15 +66,26 @@ def cmd_run(args: argparse.Namespace) -> int:
     paths, db, jobs = _runtime()
     spec = JobSpec.from_mapping(_load_json(args.file, args.stdin))
     job_id = jobs.submit(spec)
-    worker = Worker(paths, db)
     deadline = time.monotonic() + args.client_timeout
-    while time.monotonic() < deadline:
-        row = jobs.get(job_id)
-        if row and JobState(row["state"]) in TERMINAL_STATES:
-            _print(_public_job(row))
-            return 0 if row["state"] == JobState.SUCCEEDED.value else 2
-        worker.once()
-        time.sleep(0.05)
+    lock_handle: TextIO | None = None
+    worker: Worker | None = None
+    try:
+        while time.monotonic() < deadline:
+            row = jobs.get(job_id)
+            if row and JobState(row["state"]) in TERMINAL_STATES:
+                _print(_public_job(row))
+                return 0 if row["state"] == JobState.SUCCEEDED.value else 2
+            if lock_handle is None:
+                lock_handle = _try_worker_lock(paths)
+                if lock_handle is not None:
+                    worker = Worker(paths, db)
+                    worker.recover_startup()
+            if worker is not None:
+                worker.once()
+            time.sleep(0.05)
+    finally:
+        if lock_handle is not None:
+            lock_handle.close()
     row = jobs.get(job_id)
     _print({"job_id": job_id, "status": "JOB_STILL_PENDING", "job_state": row["state"] if row else None})
     return 3
@@ -115,22 +138,30 @@ def cmd_cancel(args: argparse.Namespace) -> int:
 
 def cmd_worker(args: argparse.Namespace) -> int:
     paths, db, _ = _runtime()
+    lock_handle = _try_worker_lock(paths)
+    if lock_handle is None:
+        _print({"status": "WORKER_ALREADY_RUNNING"})
+        return 5
     worker = Worker(paths, db)
-    if args.once:
-        _print({"did_work": worker.once()})
-        return 0
-    completed = 0
     try:
-        while args.max_jobs <= 0 or completed < args.max_jobs:
-            did_work = worker.once()
-            if did_work:
-                completed += 1
-            else:
-                time.sleep(args.idle_sleep)
-    except KeyboardInterrupt:
-        pass
-    _print({"status": "WORKER_STOPPED", "completed": completed})
-    return 0
+        recovery = worker.recover_startup()
+        if args.once:
+            _print({"did_work": worker.once(), "recovery": recovery})
+            return 0
+        completed = 0
+        try:
+            while args.max_jobs <= 0 or completed < args.max_jobs:
+                did_work = worker.once()
+                if did_work:
+                    completed += 1
+                else:
+                    time.sleep(args.idle_sleep)
+        except KeyboardInterrupt:
+            pass
+        _print({"status": "WORKER_STOPPED", "completed": completed, "recovery": recovery})
+        return 0
+    finally:
+        lock_handle.close()
 
 
 def cmd_doctor(_: argparse.Namespace) -> int:
