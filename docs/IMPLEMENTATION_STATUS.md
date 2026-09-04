@@ -1,8 +1,9 @@
-# Implementation Status — M1 Core + M3A Read-only Diagnostics
+# Implementation Status — R1 Authorized Operational Baseline
 
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN
 **Branch:** `main`
-**Status:** **M1 COMPLETE / M3A PASS / RECOVERY + BACKUP + SECURITY HARDENED / REAL-SOURCE C0 + RAW EVIDENCE VALIDATED / HOST READINESS RECORDED**
+**Status:** **AUTHORIZED R1 OPERATIONAL SCOPE COMPLETE**
+**Closure:** `docs/R1-OPERATIONAL-BASELINE-CLOSURE-2026-09-04.md`
 
 ## Implemented
 
