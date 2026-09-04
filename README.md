@@ -141,6 +141,14 @@ Doctor:
 .venv/bin/browserctl doctor
 ```
 
+Machine-readable capability manifest:
+
+```bash
+.venv/bin/browserctl capabilities
+```
+
+This reports the authorized R1 boundary, including direct-only network egress, C0/C1/C2 support, deferred C3/generic interaction, and `production_enabled=false` for cross-host production use.
+
 SQLite-consistent runtime backup:
 
 ```bash

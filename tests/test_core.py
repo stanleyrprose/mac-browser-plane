@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.resources
 import json
 import shutil
 import stat
@@ -41,6 +42,27 @@ def make_runtime(tmp: str) -> tuple[RuntimePaths, RuntimeDB, JobStore]:
     db = RuntimeDB(paths.db_path)
     db.initialize()
     return paths, db, JobStore(db)
+
+
+class CapabilityManifestTests(unittest.TestCase):
+    def test_manifest_matches_authorized_r1_boundary(self) -> None:
+        resource = importlib.resources.files("browser_plane").joinpath("capabilities.json")
+        manifest = json.loads(resource.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["manifest_version"], 1)
+        self.assertEqual(manifest["provider_id"], "mac-mm-01")
+        self.assertFalse(manifest["production_enabled"])
+        self.assertEqual(manifest["invocation_mode"], "local_cli_only")
+        self.assertTrue(manifest["network"]["direct"])
+        self.assertFalse(manifest["network"]["southeast_asia"])
+        self.assertFalse(manifest["network"]["china"])
+        self.assertTrue(manifest["capabilities"]["c0_fetch"])
+        self.assertTrue(manifest["capabilities"]["c1_render"])
+        self.assertFalse(manifest["capabilities"]["c1_generic_interaction"])
+        self.assertTrue(manifest["capabilities"]["c2_readonly_inspect"])
+        self.assertFalse(manifest["capabilities"]["c3_browser_agent"])
+        self.assertFalse(manifest["capabilities"]["remote_invocation"])
+        self.assertTrue(manifest["security"]["tls_verification_required"])
+        self.assertTrue(manifest["security"]["cdp_loopback_only"])
 
 
 class DBTests(unittest.TestCase):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import importlib.resources
 import json
 import sqlite3
 import sys
@@ -191,6 +192,12 @@ def cmd_backup(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_capabilities(_: argparse.Namespace) -> int:
+    resource = importlib.resources.files("browser_plane").joinpath("capabilities.json")
+    _print(json.loads(resource.read_text(encoding="utf-8")))
+    return 0
+
+
 def _public_job(row: dict[str, Any]) -> dict[str, Any]:
     result = json.loads(row["result_json"]) if row.get("result_json") else None
     return {
@@ -250,6 +257,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("backup")
     p.add_argument("--output", help="optional backup .db path; defaults under runtime home/backups")
     p.set_defaults(func=cmd_backup)
+
+    p = sub.add_parser("capabilities")
+    p.set_defaults(func=cmd_capabilities)
 
     return parser
 
