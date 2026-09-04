@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mac-browser-plane"
+version = "0.1.0"
+description = "Mac-centric local browser execution plane"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+browser = ["playwright>=1.55,<2"]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+browserctl = "browser_plane.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
