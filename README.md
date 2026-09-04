@@ -29,7 +29,7 @@ Implemented in the first milestone:
 - startup recovery for interrupted active Jobs / owned Browser processes / leases;
 - Profile Lease and browser-session Control Lease;
 - Browser Process Registry using PID + macOS process-start token;
-- C0 Direct Fetch;
+- C0 Direct Fetch using macOS `/usr/bin/curl` for HTTP/HTTPS with normal TLS verification;
 - C1 Playwright attached to runtime-owned local Google Chrome;
 - dynamic loopback CDP port (`--remote-debugging-port=0`);
 - explicit 1440×900 Browser viewport;

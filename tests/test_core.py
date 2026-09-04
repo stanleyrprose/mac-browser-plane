@@ -4,6 +4,7 @@ import json
 import shutil
 import stat
 import subprocess
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import sys
 import tempfile
 import threading
@@ -209,6 +210,39 @@ class ExecutorTests(unittest.TestCase):
             evidence_path = paths.evidence_dir / job_id / "result.json"
             self.assertTrue(evidence_path.exists())
             self.assertEqual(stat.S_IMODE(evidence_path.stat().st_mode), 0o600)
+
+    def test_c0_http_uses_system_curl_path(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                body = b"curl-path-ok"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                paths, db, jobs = make_runtime(tmp)
+                url = f"http://127.0.0.1:{server.server_port}/"
+                job_id = jobs.submit(JobSpec(task_type=TaskType.FETCH, url=url))
+                self.assertTrue(Worker(paths, db).once())
+                row = jobs.get(job_id)
+                self.assertEqual(row["state"], JobState.SUCCEEDED.value)
+                result = json.loads(row["result_json"])
+                self.assertEqual(result["status"], 200)
+                self.assertEqual(result["url"], url)
+                self.assertIn("curl-path-ok", result["text_excerpt"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
 
     def test_r1_rejects_regional_egress_and_c3_but_allows_inspect(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

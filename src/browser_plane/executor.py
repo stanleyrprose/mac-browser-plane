@@ -147,17 +147,67 @@ class BrowserExecutor:
         return True
 
     def _run_fetch(self, spec: JobSpec) -> dict[str, object]:
-        request = Request(spec.url, headers={"User-Agent": "mac-browser-plane/0.1"})
-        started = time.monotonic()
-        with urlopen(request, timeout=spec.max_run_sec) as response:  # nosec B310: URLs are explicit job input in local M1
-            body = response.read(1_000_000)
+        if spec.url.startswith("data:"):
+            request = Request(spec.url, headers={"User-Agent": "mac-browser-plane/0.1"})
+            started = time.monotonic()
+            with urlopen(request, timeout=spec.max_run_sec) as response:  # nosec B310: local test fixture only
+                body = response.read(1_000_000)
+                elapsed_ms = int((time.monotonic() - started) * 1000)
+                return {
+                    "engine": "c0-fetch",
+                    "url": response.geturl(),
+                    "status": getattr(response, "status", 200),
+                    "elapsed_ms": elapsed_ms,
+                    "content_type": response.headers.get("Content-Type"),
+                    "body_bytes": len(body),
+                    "text_excerpt": body.decode("utf-8", errors="replace")[:4000],
+                }
+
+        if not spec.url.startswith(("http://", "https://")):
+            raise CapabilityError("C0 supports only http/https URLs")
+
+        curl = Path("/usr/bin/curl")
+        if not curl.exists():
+            raise CapabilityError("system curl not found: /usr/bin/curl")
+        with tempfile.TemporaryDirectory(prefix="c0-fetch-", dir=self.paths.run_dir) as tmp:
+            body_path = Path(tmp) / "body.bin"
+            started = time.monotonic()
+            proc = subprocess.run(
+                [
+                    str(curl),
+                    "--silent",
+                    "--show-error",
+                    "--location",
+                    "--max-time",
+                    str(spec.max_run_sec),
+                    "--max-filesize",
+                    "1000000",
+                    "--user-agent",
+                    "mac-browser-plane/0.1",
+                    "--output",
+                    str(body_path),
+                    "--write-out",
+                    "%{http_code}\\n%{url_effective}\\n%{content_type}\\n",
+                    spec.url,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=spec.max_run_sec + 5,
+            )
             elapsed_ms = int((time.monotonic() - started) * 1000)
+            if proc.returncode != 0:
+                raise RuntimeError(f"curl failed ({proc.returncode}): {proc.stderr.strip()[:1000]}")
+            metadata = proc.stdout.splitlines()
+            if len(metadata) < 2:
+                raise RuntimeError("curl returned incomplete metadata")
+            body = body_path.read_bytes() if body_path.exists() else b""
             return {
                 "engine": "c0-fetch",
-                "url": response.geturl(),
-                "status": getattr(response, "status", 200),
+                "url": metadata[1],
+                "status": int(metadata[0]),
                 "elapsed_ms": elapsed_ms,
-                "content_type": response.headers.get("Content-Type"),
+                "content_type": metadata[2] if len(metadata) > 2 and metadata[2] else None,
                 "body_bytes": len(body),
                 "text_excerpt": body.decode("utf-8", errors="replace")[:4000],
             }
