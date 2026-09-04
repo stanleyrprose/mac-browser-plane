@@ -69,4 +69,5 @@ class Doctor:
     def write_report(self, report: dict[str, object]) -> Path:
         target = self.paths.run_dir / "doctor.json"
         target.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        target.chmod(0o600)
         return target

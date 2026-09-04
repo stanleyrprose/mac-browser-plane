@@ -306,6 +306,7 @@ class BrowserExecutor:
                     evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
                     screenshot_path = evidence_dir / "screenshot.png"
                     page.screenshot(path=str(screenshot_path), full_page=False)
+                    screenshot_path.chmod(0o600)
                     result["console"] = console_messages
                     result["requests"] = requests
                     result["responses"] = responses
@@ -363,7 +364,10 @@ class BrowserExecutor:
     def _write_evidence(self, job_id: str, result: dict[str, object]) -> None:
         evidence_dir = self.paths.evidence_dir / job_id
         evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        (evidence_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
+        evidence_dir.chmod(0o700)
+        target = evidence_dir / "result.json"
+        target.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
+        target.chmod(0o600)
 
     @staticmethod
     def _playwright_available() -> bool:

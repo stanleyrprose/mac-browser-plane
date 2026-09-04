@@ -183,5 +183,6 @@ The LaunchAgent requires a logged-in user session. FileVault/power-cycle behavio
 - no TLS verification bypass;
 - ambiguous Browser process ownership fails closed;
 - browser/session mutation has one control owner;
+- runtime state, backup, doctor/evidence JSON, and diagnostic screenshots are written `0600`; runtime/profile/evidence directories are `0700`;
 - R1 has no cross-host Browser API;
 - R1 does not install Browser runtime on VPS nodes.

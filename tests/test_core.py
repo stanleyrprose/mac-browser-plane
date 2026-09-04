@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ from unittest.mock import Mock, patch
 from browser_plane.cli import _try_worker_lock
 from browser_plane.config import RuntimePaths
 from browser_plane.db import JobStore, RuntimeDB
+from browser_plane.doctor import Doctor
 from browser_plane.executor import BrowserExecutor, CapabilityError
 from browser_plane.leases import LeaseManager
 from browser_plane.models import Egress, JobSpec, JobState, ProfileMode, TaskType
@@ -73,6 +75,8 @@ class DBTests(unittest.TestCase):
             report = db.backup_to(backup_path)
             self.assertEqual(report["integrity"], "ok")
             self.assertTrue(backup_path.exists())
+            self.assertEqual(stat.S_IMODE(paths.db_path.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(backup_path.stat().st_mode), 0o600)
 
             restored_path = Path(tmp) / "restored" / "state" / "runtime.db"
             restored_path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +88,12 @@ class DBTests(unittest.TestCase):
             self.assertEqual(restored["state"], JobState.QUEUED.value)
             with restored_db.connection() as conn:
                 self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+
+    def test_doctor_report_is_private(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            target = Doctor(paths, db).write_report({"status": "READY", "checks": []})
+            self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
 
 
 class LeaseTests(unittest.TestCase):
@@ -196,7 +206,9 @@ class ExecutorTests(unittest.TestCase):
             result = json.loads(row["result_json"])
             self.assertEqual(result["engine"], "c0-fetch")
             self.assertIn("hello-browser-plane", result["text_excerpt"])
-            self.assertTrue((paths.evidence_dir / job_id / "result.json").exists())
+            evidence_path = paths.evidence_dir / job_id / "result.json"
+            self.assertTrue(evidence_path.exists())
+            self.assertEqual(stat.S_IMODE(evidence_path.stat().st_mode), 0o600)
 
     def test_r1_rejects_regional_egress_and_c3_but_allows_inspect(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
