@@ -42,9 +42,16 @@ Network simplification for R1:
 - no SEA/VPS browser egress routing;
 - no China Browser egress.
 
-Still deferred after M1:
+M3A simplified C2 is now implemented:
 
-- Chrome DevTools MCP C2;
+- `task_type=inspect` launches a dedicated diagnostic Chrome session;
+- read-only CDP allowlist only;
+- captures console, request/response summaries, navigation history, performance metrics, accessibility-tree count, and screenshot;
+- no `Runtime.evaluate`, navigation/input mutation, cookie/storage mutation, or request mocking through the diagnostic CDP surface;
+- no separate `chrome-devtools-mcp` server yet. Add an MCP adapter only when a real caller needs that protocol surface.
+
+Still deferred:
+
 - Browser Use C3;
 - headed/human takeover;
 - SignalForge remote provider invocation.
@@ -100,6 +107,12 @@ Synchronous local job:
 
 ```bash
 .venv/bin/browserctl run --file examples/c1-smoke.json
+```
+
+Read-only diagnostic job:
+
+```bash
+.venv/bin/browserctl run --file examples/c2-smoke.json
 ```
 
 Queue:

@@ -1,8 +1,8 @@
-# Implementation Status — M1 Core Local Runtime
+# Implementation Status — M1 Core + M3A Read-only Diagnostics
 
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN
-**Branch:** `main`
-**Status:** **M1 COMPLETE / LOCAL PRODUCTION BASELINE PASS**
+**Branch:** `feat/m3a-readonly-inspect`
+**Status:** **M1 COMPLETE / M3A READ-ONLY DIAGNOSTICS PASS**
 
 ## Implemented
 
@@ -31,15 +31,25 @@
 - [x] User LaunchAgent installed and verified
 - [x] Unit/integration test suite
 - [x] M1 1000-job soak harness
+- [x] C2 `task_type=inspect`
+- [x] Dedicated diagnostic Browser Session
+- [x] `DEVTOOLS_READ` Control Lease owner
+- [x] Explicit CDP allowlist with mutating methods denied
+- [x] Console / request / response diagnostic capture
+- [x] Navigation history / performance metrics / accessibility-tree diagnostics
+- [x] Diagnostic screenshot evidence
 
 ## Final verification
 
 - Python compilation: PASS
-- Core tests: **11/11 PASS**
+- Core tests: **13/13 PASS**
 - `browserctl init`: PASS
 - `browserctl doctor`: **READY**
 - Live synchronous C1 local Chrome smoke: PASS
 - LaunchAgent queued C1 smoke: PASS
+- Live synchronous C2 read-only inspect smoke: PASS
+- LaunchAgent queued C2 inspect smoke: PASS
+- Post-C2 doctor: READY
 - Persistent profile run #1: PASS
 - Persistent profile run #2 using same profile: PASS
 - 1000-job soak: **1000/1000 SUCCEEDED**
@@ -88,11 +98,25 @@ R1 Browser egress = direct only
 
 Any future regional egress requirement must be proposed separately with a concrete source/business need before implementation.
 
+## M3A simplification decision
+
+M3A implements the required read-only diagnostic behavior directly through the existing Playwright CDP session instead of installing a separate `chrome-devtools-mcp` server now.
+
+Reason:
+
+```text
+same diagnostic capability needed now
++
+zero additional daemon / Node runtime / MCP lifecycle
+```
+
+If Hermes/Codex later needs an MCP protocol surface, add a thin adapter around this already-tested diagnostic boundary rather than rebuilding the runtime.
+
 ## Explicitly deferred
 
 - SEA/VPS Browser egress
 - China Browser egress
-- C2 Chrome DevTools MCP / M3A
+- separate Chrome DevTools MCP adapter/server
 - C3 Browser Use / M3B
 - headed/human takeover
 - SignalForge-to-Mac unattended Provider Invocation Contract
@@ -103,4 +127,4 @@ Existing `vps-worker-plane` Direct HTTP/API/ETL and Bangkok SignalForge remain u
 
 ## M1 freeze statement
 
-> Mac mini now owns the verified local Browser Runtime baseline. The running LaunchAgent consumes Browser Jobs from the local SQLite state store and executes C0/C1 locally. No VPS Browser runtime and no cross-host SignalForge invocation were introduced.
+> Mac mini now owns the verified local Browser Runtime baseline. The running LaunchAgent consumes Browser Jobs from the local SQLite state store and executes C0/C1 plus dedicated read-only C2 diagnostics locally. No VPS Browser runtime, regional egress layer, extra DevTools daemon, or cross-host SignalForge invocation was introduced.
