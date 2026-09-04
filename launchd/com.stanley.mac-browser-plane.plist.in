@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.stanley.mac-browser-plane</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__RUNTIME_BROWSERCTL__</string>
+    <string>worker</string>
+    <string>--max-jobs</string>
+    <string>0</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__RUNTIME_HOME__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>BROWSER_PLANE_HOME</key>
+    <string>__RUNTIME_HOME__</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>__RUNTIME_HOME__/logs/worker.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>__RUNTIME_HOME__/logs/worker.stderr.log</string>
+</dict>
+</plist>
