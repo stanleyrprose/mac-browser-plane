@@ -2,6 +2,8 @@
 
 Mac-centric local Browser Execution Plane implementing the frozen R1 v1.4.1 architecture.
 
+**Current state:** Authorized R1 Operational Scope = **COMPLETE**. See `docs/R1-OPERATIONAL-BASELINE-CLOSURE-2026-09-04.md` for the implemented baseline, accepted operating boundaries, explicit deferrals, and evidence-based reopen rules.
+
 ## Boundary
 
 ```text
