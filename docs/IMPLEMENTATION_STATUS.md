@@ -1,7 +1,7 @@
 # Implementation Status — M1 Core + M3A Read-only Diagnostics
 
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN
-**Branch:** `feat/c0-system-curl`
+**Branch:** `main`
 **Status:** **M1 COMPLETE / M3A PASS / RECOVERY + BACKUP + SECURITY HARDENED / REAL-SITE C0 VALIDATED**
 
 ## Implemented
