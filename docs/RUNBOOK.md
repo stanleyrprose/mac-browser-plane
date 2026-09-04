@@ -50,15 +50,25 @@ FileVault/user-login is a real boot boundary: after a cold reboot/power cycle, B
 
 ## 4. Job recovery
 
-If a job is left `RUNNING`, `WAITING_HUMAN`, or `CANCEL_REQUESTED` after an unclean shutdown:
+Only one Runtime Worker may execute Jobs at a time. The worker holds:
 
-1. run `browserctl doctor`;
-2. inspect Browser Process Registry and lease state;
-3. do not delete Chrome SingletonLock files blindly;
-4. do not re-run irreversible work unless idempotency is known;
-5. ambiguous work remains `RECOVERY_REQUIRED` for operator review.
+```text
+~/agent-browser-runtime/run/worker.lock
+```
 
-M1 does not automatically claim that every abandoned job is safe to retry.
+A second worker exits with `WORKER_ALREADY_RUNNING`.
+
+When a new Worker acquires the lock after an unclean shutdown, startup recovery:
+
+1. finds Jobs left `RUNNING`, `PAUSED_FOR_INSPECTION`, `WAITING_HUMAN`, or `CANCEL_REQUESTED`;
+2. reconciles registered Browser processes using PID + process-start identity + runtime-owned userDataDir when present;
+3. gracefully terminates only processes whose ownership is proven;
+4. marks gone owned processes closed;
+5. moves interrupted Jobs to `RECOVERY_REQUIRED`;
+6. releases Profile/Control leases only when process reconciliation is safe;
+7. leaves ambiguous ownership fail-closed for operator review.
+
+Do not delete Chrome SingletonLock files blindly, and do not re-run irreversible work unless idempotency is known.
 
 ## 5. Browser ownership
 

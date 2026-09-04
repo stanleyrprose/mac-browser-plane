@@ -33,7 +33,7 @@ class Doctor:
             add("runtime_paths", False, str(exc), degraded=False)
 
         try:
-            with self.db.connect() as conn:
+            with self.db.connection() as conn:
                 integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
                 journal = conn.execute("PRAGMA journal_mode").fetchone()[0]
                 sync = conn.execute("PRAGMA synchronous").fetchone()[0]

@@ -85,7 +85,7 @@ class BrowserProcessRegistry:
         return browser_process_id
 
     def get(self, browser_process_id: str) -> dict[str, object] | None:
-        with self.db.connect() as conn:
+        with self.db.connection() as conn:
             row = conn.execute(
                 "SELECT * FROM browser_processes WHERE browser_process_id=?",
                 (browser_process_id,),
@@ -99,7 +99,12 @@ class BrowserProcessRegistry:
         identity = inspect_process(int(row["pid"]))
         if identity is None:
             return False
-        return identity.start_token == row["process_start_token"]
+        if identity.start_token != row["process_start_token"]:
+            return False
+        user_data_dir = row.get("user_data_dir")
+        if user_data_dir and f"--user-data-dir={user_data_dir}" not in identity.command:
+            return False
+        return True
 
     def mark_seen(self, browser_process_id: str) -> bool:
         if not self.verify_owned(browser_process_id):
@@ -147,8 +152,38 @@ class BrowserProcessRegistry:
         self.mark_closed(browser_process_id, "FORCE_KILLED")
         return True
 
+    def for_job(self, job_id: str) -> list[dict[str, object]]:
+        with self.db.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM browser_processes WHERE job_id=? ORDER BY spawned_at",
+                (job_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def reconcile_for_job(self, job_id: str) -> dict[str, object]:
+        resolved: list[str] = []
+        ambiguous: list[str] = []
+        for row in self.for_job(job_id):
+            if row["shutdown_state"] != "RUNNING":
+                continue
+            process_id = str(row["browser_process_id"])
+            identity = inspect_process(int(row["pid"]))
+            if identity is None:
+                self.mark_closed(process_id, "GONE")
+                resolved.append(process_id)
+                continue
+            if not self.verify_owned(process_id):
+                self.mark_closed(process_id, "OWNERSHIP_UNCERTAIN")
+                ambiguous.append(process_id)
+                continue
+            if self.terminate_owned(process_id):
+                resolved.append(process_id)
+            else:
+                ambiguous.append(process_id)
+        return {"safe": not ambiguous, "resolved": resolved, "ambiguous": ambiguous}
+
     def owned_running(self) -> list[dict[str, object]]:
-        with self.db.connect() as conn:
+        with self.db.connection() as conn:
             rows = conn.execute(
                 "SELECT * FROM browser_processes WHERE shutdown_state='RUNNING' ORDER BY spawned_at"
             ).fetchall()

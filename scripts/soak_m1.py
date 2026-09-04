@@ -84,7 +84,7 @@ def main() -> int:
             state = str(row["state"])
             states[state] = states.get(state, 0) + 1
 
-        with db.connect() as conn:
+        with db.connection() as conn:
             integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
             profile_leases = conn.execute("SELECT COUNT(*) FROM profile_leases").fetchone()[0]
             control_leases = conn.execute("SELECT COUNT(*) FROM control_leases").fetchone()[0]

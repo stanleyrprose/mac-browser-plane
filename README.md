@@ -25,6 +25,8 @@ Implemented in the first milestone:
 - Job state/version CAS;
 - idempotent submit;
 - queue / run / cancel lifecycle;
+- single active Runtime Worker enforced by local `worker.lock`;
+- startup recovery for interrupted active Jobs / owned Browser processes / leases;
 - Profile Lease and browser-session Control Lease;
 - Browser Process Registry using PID + macOS process-start token;
 - C0 Direct Fetch;
