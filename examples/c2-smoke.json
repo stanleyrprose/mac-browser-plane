@@ -1,0 +1,12 @@
+{
+  "task_type": "inspect",
+  "url": "https://example.com",
+  "egress": "direct",
+  "profile": "public-research",
+  "profile_mode": "ephemeral",
+  "queue_timeout_sec": 60,
+  "max_run_sec": 30,
+  "evidence_policy": "always",
+  "control_mode": "inspect",
+  "retry_policy": "none"
+}

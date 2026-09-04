@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 from urllib.request import Request, urlopen
 
 from .config import RuntimePaths
@@ -23,6 +24,15 @@ class CapabilityError(RuntimeError):
 
 
 class BrowserExecutor:
+    READ_ONLY_CDP_METHODS = frozenset(
+        {
+            "Accessibility.getFullAXTree",
+            "Page.getNavigationHistory",
+            "Performance.enable",
+            "Performance.getMetrics",
+        }
+    )
+
     def __init__(self, paths: RuntimePaths, db: RuntimeDB):
         self.paths = paths
         self.db = db
@@ -33,9 +43,9 @@ class BrowserExecutor:
     def preflight(self, spec: JobSpec) -> None:
         if spec.egress not in {Egress.AUTO, Egress.DIRECT}:
             raise CapabilityError("M1 supports direct egress only")
-        if spec.task_type in {TaskType.INSPECT, TaskType.AGENT}:
-            raise CapabilityError("C2/C3 are not installed in M1")
-        if spec.task_type == TaskType.AUTOMATE and not self._playwright_available():
+        if spec.task_type == TaskType.AGENT:
+            raise CapabilityError("C3 Browser Agent is not installed")
+        if spec.task_type in {TaskType.AUTOMATE, TaskType.INSPECT} and not self._playwright_available():
             raise CapabilityError("Playwright Python package is not installed")
 
     def run_one(self, row: dict[str, object]) -> bool:
@@ -75,6 +85,8 @@ class BrowserExecutor:
                 result = self._run_fetch(spec)
             elif spec.task_type == TaskType.AUTOMATE:
                 result = self._run_playwright(job_id, spec, profile_epoch)
+            elif spec.task_type == TaskType.INSPECT:
+                result = self._run_playwright(job_id, spec, profile_epoch, inspect_mode=True)
             else:
                 raise CapabilityError(f"unsupported task type {spec.task_type}")
             self._write_evidence(job_id, result)
@@ -118,11 +130,15 @@ class BrowserExecutor:
                     partial_effect_possible=True,
                 )
             else:
+                failure_class = {
+                    TaskType.AUTOMATE: "AUTOMATION_FAILED",
+                    TaskType.INSPECT: "INSPECT_FAILED",
+                }.get(spec.task_type, "FETCH_FAILED")
                 self.jobs.transition(
                     job_id,
                     {JobState.RUNNING},
                     JobState.FAILED,
-                    failure_class="AUTOMATION_FAILED" if spec.task_type == TaskType.AUTOMATE else "FETCH_FAILED",
+                    failure_class=failure_class,
                     result={"error": f"{type(exc).__name__}: {exc}"},
                 )
         finally:
@@ -146,7 +162,14 @@ class BrowserExecutor:
                 "text_excerpt": body.decode("utf-8", errors="replace")[:4000],
             }
 
-    def _run_playwright(self, job_id: str, spec: JobSpec, profile_epoch: int | None) -> dict[str, object]:
+    def _run_playwright(
+        self,
+        job_id: str,
+        spec: JobSpec,
+        profile_epoch: int | None,
+        *,
+        inspect_mode: bool = False,
+    ) -> dict[str, object]:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
@@ -194,14 +217,18 @@ class BrowserExecutor:
             browser_process_id = self.processes.register(
                 pid=proc.pid,
                 job_id=job_id,
-                runtime_kind="C1",
+                runtime_kind="C2" if inspect_mode else "C1",
                 profile_id=spec.profile if persistent else None,
                 user_data_dir=str(user_data_dir),
             )
             if persistent and profile_epoch is not None:
                 if not self.leases.bind_profile_process(spec.profile, job_id, profile_epoch, browser_process_id):
                     raise RuntimeError("profile lease fencing check failed")
-            control_epoch = self.leases.acquire_control(browser_session_id, job_id, "PLAYWRIGHT")
+            control_epoch = self.leases.acquire_control(
+                browser_session_id,
+                job_id,
+                "DEVTOOLS_READ" if inspect_mode else "PLAYWRIGHT",
+            )
             if control_epoch is None:
                 raise RuntimeError("control lease unavailable")
 
@@ -226,11 +253,37 @@ class BrowserExecutor:
                 context = browser.contexts[0] if browser.contexts else browser.new_context(viewport={"width": 1440, "height": 900})
                 page = context.pages[0] if context.pages else context.new_page()
                 page.set_viewport_size({"width": 1440, "height": 900})
+
+                console_messages: list[dict[str, str]] = []
+                requests: list[dict[str, str]] = []
+                responses: list[dict[str, object]] = []
+                if inspect_mode:
+                    page.on(
+                        "console",
+                        lambda msg: console_messages.append({"type": msg.type, "text": msg.text})
+                        if len(console_messages) < 100
+                        else None,
+                    )
+                    page.on(
+                        "request",
+                        lambda req: requests.append(
+                            {"method": req.method, "url": req.url, "resource_type": req.resource_type}
+                        )
+                        if len(requests) < 200
+                        else None,
+                    )
+                    page.on(
+                        "response",
+                        lambda resp: responses.append({"status": resp.status, "url": resp.url})
+                        if len(responses) < 200
+                        else None,
+                    )
+
                 started = time.monotonic()
                 response = page.goto(spec.url, wait_until="domcontentloaded", timeout=spec.max_run_sec * 1000)
                 elapsed_ms = int((time.monotonic() - started) * 1000)
-                result = {
-                    "engine": "c1-playwright",
+                result: dict[str, object] = {
+                    "engine": "c2-readonly-inspect" if inspect_mode else "c1-playwright",
                     "url": page.url,
                     "title": page.title(),
                     "status": response.status if response else None,
@@ -239,6 +292,30 @@ class BrowserExecutor:
                     "browser_process_id": browser_process_id,
                     "browser_session_id": browser_session_id,
                 }
+
+                if inspect_mode:
+                    cdp = context.new_cdp_session(page)
+                    try:
+                        navigation = self._readonly_cdp_send(cdp, "Page.getNavigationHistory")
+                        self._readonly_cdp_send(cdp, "Performance.enable")
+                        performance = self._readonly_cdp_send(cdp, "Performance.getMetrics")
+                        accessibility = self._readonly_cdp_send(cdp, "Accessibility.getFullAXTree")
+                    finally:
+                        cdp.detach()
+                    evidence_dir = self.paths.evidence_dir / job_id
+                    evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    screenshot_path = evidence_dir / "screenshot.png"
+                    page.screenshot(path=str(screenshot_path), full_page=False)
+                    result["console"] = console_messages
+                    result["requests"] = requests
+                    result["responses"] = responses
+                    result["cdp"] = {
+                        "navigation_history": navigation,
+                        "performance_metrics": performance,
+                        "accessibility_node_count": len(accessibility.get("nodes", [])),
+                    }
+                    result["screenshot"] = str(screenshot_path)
+
                 browser.close()
                 return result
         finally:
@@ -256,6 +333,12 @@ class BrowserExecutor:
                 proc.terminate()
             if remove_dir:
                 shutil.rmtree(user_data_dir, ignore_errors=True)
+
+    @classmethod
+    def _readonly_cdp_send(cls, session: Any, method: str) -> dict[str, Any]:
+        if method not in cls.READ_ONLY_CDP_METHODS:
+            raise CapabilityError(f"CDP method is not allowed in R1 read-only inspect: {method}")
+        return dict(session.send(method))
 
     @staticmethod
     def _clear_stale_cdp_discovery(user_data_dir: Path) -> None:

@@ -8,7 +8,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from browser_plane.config import RuntimePaths
 from browser_plane.db import JobStore, RuntimeDB
@@ -121,7 +121,7 @@ class ExecutorTests(unittest.TestCase):
             self.assertIn("hello-browser-plane", result["text_excerpt"])
             self.assertTrue((paths.evidence_dir / job_id / "result.json").exists())
 
-    def test_m1_rejects_sea_and_c3(self) -> None:
+    def test_r1_rejects_regional_egress_and_c3_but_allows_inspect(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths, db, _ = make_runtime(tmp)
             executor = BrowserExecutor(paths, db)
@@ -129,6 +129,30 @@ class ExecutorTests(unittest.TestCase):
                 executor.preflight(JobSpec(task_type=TaskType.FETCH, url="data:text/plain,x", egress=Egress.SOUTHEAST_ASIA))
             with self.assertRaises(CapabilityError):
                 executor.preflight(JobSpec(task_type=TaskType.AGENT, url="data:text/plain,x"))
+            with patch.object(BrowserExecutor, "_playwright_available", return_value=True):
+                executor.preflight(JobSpec(task_type=TaskType.INSPECT, url="data:text/plain,x"))
+
+    def test_c2_readonly_cdp_allowlist_blocks_mutation(self) -> None:
+        session = Mock()
+        session.send.return_value = {"currentIndex": 0, "entries": []}
+        result = BrowserExecutor._readonly_cdp_send(session, "Page.getNavigationHistory")
+        self.assertEqual(result["currentIndex"], 0)
+        session.send.assert_called_once_with("Page.getNavigationHistory")
+        with self.assertRaises(CapabilityError):
+            BrowserExecutor._readonly_cdp_send(session, "Runtime.evaluate")
+
+    def test_inspect_failure_uses_inspect_failure_class(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, jobs = make_runtime(tmp)
+            job_id = jobs.submit(JobSpec(task_type=TaskType.INSPECT, url="data:text/plain,x"))
+            with (
+                patch.object(BrowserExecutor, "_playwright_available", return_value=True),
+                patch.object(BrowserExecutor, "_run_playwright", side_effect=RuntimeError("inspect boom")),
+            ):
+                self.assertTrue(Worker(paths, db).once())
+            row = jobs.get(job_id)
+            self.assertEqual(row["state"], JobState.FAILED.value)
+            self.assertEqual(row["failure_class"], "INSPECT_FAILED")
 
     def test_stale_cdp_discovery_file_is_removed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,4 +1,4 @@
-# Mac Browser Plane R1 — M1 Runbook
+# Mac Browser Plane R1 — Runtime Runbook
 
 ## 1. Health
 
@@ -78,15 +78,25 @@ Browser Plane only terminates a process when runtime ownership is confirmed by i
 - persistent profile ownership is exclusive;
 - lease expiry alone is not permission to steal or delete profile state.
 
-## 7. CDP
+## 7. CDP / C2 read-only diagnostics
 
-C1 Chrome uses:
+C1/C2 Chrome uses:
 
 ```text
 --remote-debugging-port=0
 ```
 
 The runtime reads the dynamically allocated local port from `DevToolsActivePort` and connects over loopback only.
+
+C2 `task_type=inspect` runs in a dedicated diagnostic Browser Session and may only use the explicit diagnostic allowlist. Current CDP methods are limited to navigation-history, performance instrumentation/read, and accessibility-tree reads. `Runtime.evaluate` and other state-changing CDP methods are denied.
+
+Run a diagnostic job:
+
+```bash
+.venv/bin/browserctl run --file examples/c2-smoke.json
+```
+
+Evidence includes `result.json` plus `screenshot.png`.
 
 Never expose CDP publicly.
 
@@ -98,21 +108,22 @@ SQLite backup must be SQLite-consistent (`sqlite3 .backup` / backup API), not a 
 
 Authenticated profile/session backups are sensitive and may be omitted in favor of re-authentication after disaster recovery.
 
-## 9. M1 verification
+## 9. Verification
 
 ```bash
 .venv/bin/python -m unittest -v tests.test_core
 .venv/bin/python scripts/soak_m1.py --jobs 1000 --browser-jobs 5 --submitters 8
+.venv/bin/browserctl run --file examples/c2-smoke.json
 .venv/bin/browserctl doctor
 ```
 
 ## 10. Scope boundary
 
-M1 has no:
+R1 currently has no:
 
-- SEA proxy routing;
+- SEA/VPS Browser egress;
 - China Browser route;
-- DevTools MCP C2;
+- separate `chrome-devtools-mcp` server/adapter;
 - Browser Use C3;
 - SignalForge remote invocation.
 
