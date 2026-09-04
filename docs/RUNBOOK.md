@@ -99,6 +99,8 @@ Do not loosen these permissions to solve an access problem; fix the caller/runti
 
 C0 HTTP/HTTPS uses macOS `/usr/bin/curl` with normal certificate verification. Do not add `-k` / `--insecure`. A C0 TLS/client failure must be classified before escalating to C1; it does not by itself prove that a site requires Browser execution.
 
+Every C0 HTTP/HTTPS response is preserved under the Job evidence directory as a private raw artifact (`0600`) with SHA-256. Common suffixes are normalized from Content-Type (`response.html`, `response.txt`, `response.json`, `response.xml`, `response.pdf`); unknown binary content falls back to the URL suffix or `.bin`. Textual responses additionally expose only a bounded `text_excerpt` in the Job result. Browser Plane does not parse PDFs or canonicalize business content.
+
 ## 7. CDP / C2 read-only diagnostics
 
 C1/C2 Chrome uses:
