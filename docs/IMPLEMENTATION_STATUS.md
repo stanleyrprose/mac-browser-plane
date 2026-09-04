@@ -1,7 +1,7 @@
 # Implementation Status — M1 Core Local Runtime
 
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN
-**Branch:** `feat/m1-core-runtime`
+**Branch:** `main`
 **Status:** **M1 COMPLETE / LOCAL PRODUCTION BASELINE PASS**
 
 ## Implemented
@@ -74,10 +74,24 @@ A second consecutive run against the same persistent Chrome profile initially fa
 
 The runtime now removes only this runtime-owned discovery file while holding the exclusive Profile Lease before spawning the next owned Chrome process. It does **not** delete Chrome SingletonLock/SingletonCookie, cookies, or profile content.
 
+## R1 network simplification decision
+
+Browser traffic uses the **Mac mini direct Internet connection only**. Websites therefore see the Mac mini's current public egress IP.
+
+The previously planned SEA/VPS egress path was intentionally dropped before merge because it added SSH tunnel, proxy, edge-health and routing state without a current business need.
+
+Current rule:
+
+```text
+R1 Browser egress = direct only
+```
+
+Any future regional egress requirement must be proposed separately with a concrete source/business need before implementation.
+
 ## Explicitly deferred
 
-- SEA egress / M2
-- China Browser / Gate C
+- SEA/VPS Browser egress
+- China Browser egress
 - C2 Chrome DevTools MCP / M3A
 - C3 Browser Use / M3B
 - headed/human takeover
