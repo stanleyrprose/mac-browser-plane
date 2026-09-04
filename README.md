@@ -173,7 +173,7 @@ Remove:
 .venv/bin/python scripts/uninstall_launchd.py
 ```
 
-The LaunchAgent requires a logged-in user session. FileVault/power-cycle behavior remains a documented host availability boundary.
+The LaunchAgent requires a logged-in user session. Current host power/login behavior is recorded in `docs/HOST_READINESS.md`; R1 accepts manual macOS login after a cold power cycle rather than adding automatic login or a system LaunchDaemon.
 
 ## Security invariants
 
