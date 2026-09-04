@@ -1,8 +1,8 @@
 # Implementation Status — M1 Core + M3A Read-only Diagnostics
 
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN
-**Branch:** `main`
-**Status:** **M1 COMPLETE / M3A PASS / RECOVERY + BACKUP + SECURITY HARDENED / REAL-SITE C0 VALIDATED**
+**Branch:** `feat/c0-binary-artifacts`
+**Status:** **M1 COMPLETE / M3A PASS / RECOVERY + BACKUP + SECURITY HARDENED / REAL-SOURCE C0 + RAW EVIDENCE VALIDATED**
 
 ## Implemented
 
@@ -19,7 +19,7 @@
 - [x] Browser Process Registry
 - [x] PID + macOS start-token ownership verification
 - [x] Graceful terminate → force-kill last-resort ladder
-- [x] C0 Direct Fetch via macOS system curl for HTTP/HTTPS; local `data:` fixture path retained only for tests
+- [x] C0 Direct Fetch via macOS system curl for HTTP/HTTPS; full raw response preserved as private evidence artifact with SHA-256; textual responses also expose a bounded `text_excerpt`; local `data:` fixture path retained only for tests
 - [x] C1 Playwright Direct
 - [x] Runtime-owned local Google Chrome
 - [x] Dynamic loopback CDP port
@@ -49,7 +49,7 @@
 ## Final verification
 
 - Python compilation: PASS
-- Core tests: **18/18 PASS** with `ResourceWarning` promoted to error
+- Core tests: **19/19 PASS** with `ResourceWarning` promoted to error
 - Startup recovery owned-process/lease test: PASS
 - Worker lock exclusivity test: PASS
 - `browserctl init`: PASS
@@ -66,6 +66,9 @@
 - Live C2 security smoke: runtime DB, `result.json`, and `screenshot.png` are `0600`: PASS
 - Real-site MPT Tender validation: original Python-urllib C0 failed strict TLS chain validation; C1/C2 both returned HTTP 200
 - C0 switched to macOS `/usr/bin/curl` without TLS bypass; same MPT Tender URL then returned HTTP 200 with ~80 KB HTML: PASS
+- Real-site MPA Tender list: C0 HTTP 200 / ~252 KB HTML; full `response.html` contains current tender dates/titles: PASS
+- Real-site Ministry of Commerce 2026 Notifications: C0 HTTP 200 / ~108 KB HTML with notification list present in static HTML: PASS
+- Real MPA tender PDF: C0 HTTP 200 / 78,480 bytes; raw `response.pdf` preserved with SHA-256 and mode `0600`: PASS
 - Persistent profile run #1: PASS
 - Persistent profile run #2 using same profile: PASS
 - 1000-job soak: **1000/1000 SUCCEEDED**

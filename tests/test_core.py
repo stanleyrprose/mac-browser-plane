@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import stat
@@ -239,6 +240,48 @@ class ExecutorTests(unittest.TestCase):
                 self.assertEqual(result["status"], 200)
                 self.assertEqual(result["url"], url)
                 self.assertIn("curl-path-ok", result["text_excerpt"])
+                artifact = Path(result["artifact_path"])
+                self.assertEqual(artifact.name, "response.txt")
+                self.assertEqual(artifact.read_bytes(), b"curl-path-ok")
+                self.assertEqual(result["sha256"], hashlib.sha256(b"curl-path-ok").hexdigest())
+                self.assertEqual(stat.S_IMODE(artifact.stat().st_mode), 0o600)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def test_c0_binary_response_is_saved_as_private_artifact(self) -> None:
+        payload = b"%PDF-1.7\nminimal-binary-evidence\n"
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                paths, db, jobs = make_runtime(tmp)
+                url = f"http://127.0.0.1:{server.server_port}/tender.pdf"
+                job_id = jobs.submit(JobSpec(task_type=TaskType.FETCH, url=url))
+                self.assertTrue(Worker(paths, db).once())
+                row = jobs.get(job_id)
+                self.assertEqual(row["state"], JobState.SUCCEEDED.value)
+                result = json.loads(row["result_json"])
+                self.assertNotIn("text_excerpt", result)
+                artifact = Path(result["artifact_path"])
+                self.assertEqual(artifact.name, "response.pdf")
+                self.assertEqual(artifact.read_bytes(), payload)
+                self.assertEqual(result["sha256"], hashlib.sha256(payload).hexdigest())
+                self.assertEqual(stat.S_IMODE(artifact.stat().st_mode), 0o600)
         finally:
             server.shutdown()
             server.server_close()
@@ -307,7 +350,7 @@ class ExecutorTests(unittest.TestCase):
             paths, db, jobs = make_runtime(tmp)
             job_id = jobs.submit(JobSpec(task_type=TaskType.FETCH, url="data:text/plain,x"))
 
-            def slow_fetch(_: JobSpec) -> dict[str, object]:
+            def slow_fetch(_: str, __: JobSpec) -> dict[str, object]:
                 time.sleep(0.3)
                 return {"engine": "test", "ok": True}
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -10,6 +11,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from .config import RuntimePaths
@@ -82,7 +84,7 @@ class BrowserExecutor:
 
         try:
             if spec.task_type == TaskType.FETCH:
-                result = self._run_fetch(spec)
+                result = self._run_fetch(job_id, spec)
             elif spec.task_type == TaskType.AUTOMATE:
                 result = self._run_playwright(job_id, spec, profile_epoch)
             elif spec.task_type == TaskType.INSPECT:
@@ -146,7 +148,7 @@ class BrowserExecutor:
                 self.leases.release_profile(spec.profile, job_id, profile_epoch)
         return True
 
-    def _run_fetch(self, spec: JobSpec) -> dict[str, object]:
+    def _run_fetch(self, job_id: str, spec: JobSpec) -> dict[str, object]:
         if spec.url.startswith("data:"):
             request = Request(spec.url, headers={"User-Agent": "mac-browser-plane/0.1"})
             started = time.monotonic()
@@ -202,15 +204,55 @@ class BrowserExecutor:
             if len(metadata) < 2:
                 raise RuntimeError("curl returned incomplete metadata")
             body = body_path.read_bytes() if body_path.exists() else b""
-            return {
+            content_type = metadata[2] if len(metadata) > 2 and metadata[2] else None
+            result: dict[str, object] = {
                 "engine": "c0-fetch",
                 "url": metadata[1],
                 "status": int(metadata[0]),
                 "elapsed_ms": elapsed_ms,
-                "content_type": metadata[2] if len(metadata) > 2 and metadata[2] else None,
+                "content_type": content_type,
                 "body_bytes": len(body),
-                "text_excerpt": body.decode("utf-8", errors="replace")[:4000],
             }
+            evidence_dir = self.paths.evidence_dir / job_id
+            evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            evidence_dir.chmod(0o700)
+            artifact_path = evidence_dir / f"response{self._artifact_suffix(content_type, metadata[1])}"
+            shutil.copy2(body_path, artifact_path)
+            artifact_path.chmod(0o600)
+            result["artifact_path"] = str(artifact_path)
+            result["sha256"] = hashlib.sha256(body).hexdigest()
+            if self._is_textual_content(content_type):
+                result["text_excerpt"] = body.decode("utf-8", errors="replace")[:4000]
+            return result
+
+    @staticmethod
+    def _artifact_suffix(content_type: str | None, url: str) -> str:
+        media_type = (content_type or "").split(";", 1)[0].strip().lower()
+        mapped = {
+            "text/html": ".html",
+            "text/plain": ".txt",
+            "application/json": ".json",
+            "application/ld+json": ".json",
+            "application/xml": ".xml",
+            "application/xhtml+xml": ".html",
+            "application/pdf": ".pdf",
+        }.get(media_type)
+        if mapped:
+            return mapped
+        suffix = Path(urlsplit(url).path).suffix.lower()
+        return suffix if suffix and len(suffix) <= 10 else ".bin"
+
+    @staticmethod
+    def _is_textual_content(content_type: str | None) -> bool:
+        if not content_type:
+            return False
+        media_type = content_type.split(";", 1)[0].strip().lower()
+        return media_type.startswith("text/") or media_type in {
+            "application/json",
+            "application/ld+json",
+            "application/xml",
+            "application/xhtml+xml",
+        }
 
     def _run_playwright(
         self,
