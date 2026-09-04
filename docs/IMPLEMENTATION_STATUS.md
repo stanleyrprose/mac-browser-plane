@@ -1,8 +1,8 @@
 # Implementation Status — M1 Core + M3A Read-only Diagnostics
 
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN
-**Branch:** `feat/c0-binary-artifacts`
-**Status:** **M1 COMPLETE / M3A PASS / RECOVERY + BACKUP + SECURITY HARDENED / REAL-SOURCE C0 + RAW EVIDENCE VALIDATED**
+**Branch:** `main`
+**Status:** **M1 COMPLETE / M3A PASS / RECOVERY + BACKUP + SECURITY HARDENED / REAL-SOURCE C0 + RAW EVIDENCE VALIDATED / HOST READINESS RECORDED**
 
 ## Implemented
 
@@ -71,6 +71,8 @@
 - Real MPA tender PDF: C0 HTTP 200 / 78,480 bytes; raw `response.pdf` preserved with SHA-256 and mode `0600`: PASS
 - Ministry of Border Affairs tender pagination: C0 page 0/page 1 both HTTP 200 with different content; visible `Load More` resolves to ordinary `?page=N` links: PASS
 - Myanmar National Trade Portal legal filtering/pagination: server-rendered result list, ordinary `?page=N` pagination, GET-based filter; direct keyword filter returned exactly 1/1 target result: PASS
+- Host readiness audit: AC system sleep disabled (`sleep=0`), power-failure restart enabled (`autorestart=1`), WindowServer/user session healthy, LaunchAgent running: PASS
+- Cold power-cycle boundary: no automatic login configured; after auto-restart one manual macOS login is required before the user LaunchAgent can return Browser Plane to READY: ACCEPTED R1 BOUNDARY
 - Persistent profile run #1: PASS
 - Persistent profile run #2 using same profile: PASS
 - 1000-job soak: **1000/1000 SUCCEEDED**
