@@ -139,6 +139,14 @@ Doctor:
 .venv/bin/browserctl doctor
 ```
 
+SQLite-consistent runtime backup:
+
+```bash
+.venv/bin/browserctl backup
+```
+
+By default the snapshot is written under `~/agent-browser-runtime/backups/`. This backs up runtime SQLite state only; it does not copy authenticated Chrome profiles/cookies.
+
 ## Tests
 
 ```bash

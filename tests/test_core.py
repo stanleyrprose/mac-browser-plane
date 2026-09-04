@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -63,6 +64,26 @@ class DBTests(unittest.TestCase):
             job_id = jobs.submit(JobSpec(task_type=TaskType.FETCH, url="data:text/plain,ok"))
             self.assertFalse(jobs.transition(job_id, {JobState.RUNNING}, JobState.SUCCEEDED))
             self.assertEqual(jobs.get(job_id)["state"], JobState.QUEUED.value)
+
+    def test_sqlite_backup_is_consistent_and_restorable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, jobs = make_runtime(tmp)
+            job_id = jobs.submit(JobSpec(task_type=TaskType.FETCH, url="data:text/plain,backup"))
+            backup_path = paths.root / "backups" / "runtime-test.db"
+            report = db.backup_to(backup_path)
+            self.assertEqual(report["integrity"], "ok")
+            self.assertTrue(backup_path.exists())
+
+            restored_path = Path(tmp) / "restored" / "state" / "runtime.db"
+            restored_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup_path, restored_path)
+            restored_db = RuntimeDB(restored_path)
+            restored_jobs = JobStore(restored_db)
+            restored = restored_jobs.get(job_id)
+            self.assertIsNotNone(restored)
+            self.assertEqual(restored["state"], JobState.QUEUED.value)
+            with restored_db.connection() as conn:
+                self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
 
 class LeaseTests(unittest.TestCase):

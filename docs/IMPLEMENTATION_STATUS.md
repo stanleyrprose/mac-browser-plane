@@ -1,8 +1,8 @@
 # Implementation Status — M1 Core + M3A Read-only Diagnostics
 
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN
-**Branch:** `feat/recovery-hardening`
-**Status:** **M1 COMPLETE / M3A PASS / RECOVERY HARDENED**
+**Branch:** `feat/sqlite-backup`
+**Status:** **M1 COMPLETE / M3A PASS / RECOVERY + BACKUP HARDENED**
 
 ## Implemented
 
@@ -35,6 +35,8 @@
 - [x] Single active Runtime Worker via local file lock
 - [x] Startup recovery to `RECOVERY_REQUIRED`
 - [x] Safe owned-process reconciliation before lease release
+- [x] Online SQLite-consistent `browserctl backup`
+- [x] Backup integrity check + restore smoke
 - [x] C2 `task_type=inspect`
 - [x] Dedicated diagnostic Browser Session
 - [x] `DEVTOOLS_READ` Control Lease owner
@@ -46,7 +48,7 @@
 ## Final verification
 
 - Python compilation: PASS
-- Core tests: **15/15 PASS** with `ResourceWarning` promoted to error
+- Core tests: **16/16 PASS** with `ResourceWarning` promoted to error
 - Startup recovery owned-process/lease test: PASS
 - Worker lock exclusivity test: PASS
 - `browserctl init`: PASS
@@ -58,6 +60,8 @@
 - Post-C2 doctor: READY
 - Installed LaunchAgent holds `worker.lock`; second worker returns `WORKER_ALREADY_RUNNING`: PASS
 - Recovery-hardening 1000-job soak: **1000/1000 SUCCEEDED**
+- Online SQLite backup while LaunchAgent running: PASS (`integrity=ok`)
+- Backup restore smoke into a fresh runtime DB: PASS
 - Persistent profile run #1: PASS
 - Persistent profile run #2 using same profile: PASS
 - 1000-job soak: **1000/1000 SUCCEEDED**

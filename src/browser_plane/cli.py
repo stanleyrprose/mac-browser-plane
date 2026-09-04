@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
+import sqlite3
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -173,6 +175,22 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     return 0 if report["status"] == "READY" else 2
 
 
+def cmd_backup(args: argparse.Namespace) -> int:
+    paths, db, _ = _runtime()
+    if args.output:
+        target = Path(args.output).expanduser()
+    else:
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        target = paths.root / "backups" / f"runtime-{stamp}.db"
+    try:
+        report = db.backup_to(target)
+    except (OSError, sqlite3.Error, RuntimeError) as exc:
+        _print({"error": "BACKUP_FAILED", "detail": f"{type(exc).__name__}: {exc}"})
+        return 2
+    _print({"status": "BACKUP_CREATED", **report})
+    return 0
+
+
 def _public_job(row: dict[str, Any]) -> dict[str, Any]:
     result = json.loads(row["result_json"]) if row.get("result_json") else None
     return {
@@ -228,6 +246,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("doctor")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("backup")
+    p.add_argument("--output", help="optional backup .db path; defaults under runtime home/backups")
+    p.set_defaults(func=cmd_backup)
 
     return parser
 

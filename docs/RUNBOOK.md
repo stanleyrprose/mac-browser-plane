@@ -114,9 +114,21 @@ Never expose CDP publicly.
 
 Git is canonical for source/config/docs.
 
-SQLite backup must be SQLite-consistent (`sqlite3 .backup` / backup API), not a raw main-file copy while WAL is active.
+Create an online SQLite-consistent runtime backup with:
 
-Authenticated profile/session backups are sensitive and may be omitted in favor of re-authentication after disaster recovery.
+```bash
+browserctl backup
+```
+
+Default destination:
+
+```text
+~/agent-browser-runtime/backups/runtime-<timestamp>.db
+```
+
+The command uses SQLite's backup API and immediately runs `PRAGMA integrity_check`; it does not raw-copy the WAL database and does not require stopping the LaunchAgent.
+
+This R1 backup intentionally covers runtime SQLite state only. Authenticated Chrome profiles/cookies are sensitive and are **not** copied automatically; disaster recovery may require re-authentication. Evidence is also not included in this minimal backup path.
 
 ## 9. Verification
 

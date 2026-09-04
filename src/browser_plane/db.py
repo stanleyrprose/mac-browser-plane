@@ -126,6 +126,23 @@ class RuntimeDB:
         finally:
             conn.close()
 
+    def backup_to(self, target: Path) -> dict[str, object]:
+        target = Path(target)
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if target.exists():
+            raise FileExistsError(f"backup target already exists: {target}")
+        with self.connection() as source:
+            destination = sqlite3.connect(target)
+            try:
+                source.backup(destination)
+                integrity = destination.execute("PRAGMA integrity_check").fetchone()[0]
+            finally:
+                destination.close()
+        if integrity != "ok":
+            target.unlink(missing_ok=True)
+            raise RuntimeError(f"backup integrity check failed: {integrity}")
+        return {"path": str(target), "integrity": integrity, "bytes": target.stat().st_size}
+
 
 class JobStore:
     def __init__(self, db: RuntimeDB):
