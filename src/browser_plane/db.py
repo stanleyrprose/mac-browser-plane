@@ -98,7 +98,13 @@ class RuntimeDB:
         conn.execute("PRAGMA synchronous=FULL")
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA foreign_keys=ON")
+        self._secure_sqlite_files()
         return conn
+
+    def _secure_sqlite_files(self) -> None:
+        for path in (self.path, Path(f"{self.path}-wal"), Path(f"{self.path}-shm")):
+            if path.exists():
+                path.chmod(0o600)
 
     def initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -141,6 +147,7 @@ class RuntimeDB:
         if integrity != "ok":
             target.unlink(missing_ok=True)
             raise RuntimeError(f"backup integrity check failed: {integrity}")
+        target.chmod(0o600)
         return {"path": str(target), "integrity": integrity, "bytes": target.stat().st_size}
 
 

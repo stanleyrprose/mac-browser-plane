@@ -1,8 +1,8 @@
 # Implementation Status — M1 Core + M3A Read-only Diagnostics
 
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN
-**Branch:** `feat/sqlite-backup`
-**Status:** **M1 COMPLETE / M3A PASS / RECOVERY + BACKUP HARDENED**
+**Branch:** `feat/runtime-file-permissions`
+**Status:** **M1 COMPLETE / M3A PASS / RECOVERY + BACKUP + FILE PERMISSIONS HARDENED**
 
 ## Implemented
 
@@ -37,6 +37,7 @@
 - [x] Safe owned-process reconciliation before lease release
 - [x] Online SQLite-consistent `browserctl backup`
 - [x] Backup integrity check + restore smoke
+- [x] Runtime/state/evidence/backup sensitive files hardened to `0600`; runtime/profile/evidence directories to `0700`
 - [x] C2 `task_type=inspect`
 - [x] Dedicated diagnostic Browser Session
 - [x] `DEVTOOLS_READ` Control Lease owner
@@ -48,7 +49,7 @@
 ## Final verification
 
 - Python compilation: PASS
-- Core tests: **16/16 PASS** with `ResourceWarning` promoted to error
+- Core tests: **17/17 PASS** with `ResourceWarning` promoted to error
 - Startup recovery owned-process/lease test: PASS
 - Worker lock exclusivity test: PASS
 - `browserctl init`: PASS
@@ -62,6 +63,7 @@
 - Recovery-hardening 1000-job soak: **1000/1000 SUCCEEDED**
 - Online SQLite backup while LaunchAgent running: PASS (`integrity=ok`)
 - Backup restore smoke into a fresh runtime DB: PASS
+- Live C2 security smoke: runtime DB, `result.json`, and `screenshot.png` are `0600`: PASS
 - Persistent profile run #1: PASS
 - Persistent profile run #2 using same profile: PASS
 - 1000-job soak: **1000/1000 SUCCEEDED**

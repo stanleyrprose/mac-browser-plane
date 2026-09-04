@@ -88,6 +88,15 @@ Browser Plane only terminates a process when runtime ownership is confirmed by i
 - persistent profile ownership is exclusive;
 - lease expiry alone is not permission to steal or delete profile state.
 
+Runtime/private file permissions:
+
+```text
+runtime/profile/evidence directories = 0700
+runtime.db / backups / doctor.json / result.json / screenshots = 0600
+```
+
+Do not loosen these permissions to solve an access problem; fix the caller/runtime ownership instead.
+
 ## 7. CDP / C2 read-only diagnostics
 
 C1/C2 Chrome uses:

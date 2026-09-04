@@ -42,5 +42,8 @@ class RuntimePaths:
             self.run_dir,
         ):
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
+            path.chmod(0o700)
         for profile in ("public-research", "authenticated-work", "development"):
-            (self.profiles_dir / profile).mkdir(parents=True, exist_ok=True, mode=0o700)
+            profile_path = self.profiles_dir / profile
+            profile_path.mkdir(parents=True, exist_ok=True, mode=0o700)
+            profile_path.chmod(0o700)
