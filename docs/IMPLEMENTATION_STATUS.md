@@ -69,6 +69,8 @@
 - Real-site MPA Tender list: C0 HTTP 200 / ~252 KB HTML; full `response.html` contains current tender dates/titles: PASS
 - Real-site Ministry of Commerce 2026 Notifications: C0 HTTP 200 / ~108 KB HTML with notification list present in static HTML: PASS
 - Real MPA tender PDF: C0 HTTP 200 / 78,480 bytes; raw `response.pdf` preserved with SHA-256 and mode `0600`: PASS
+- Ministry of Border Affairs tender pagination: C0 page 0/page 1 both HTTP 200 with different content; visible `Load More` resolves to ordinary `?page=N` links: PASS
+- Myanmar National Trade Portal legal filtering/pagination: server-rendered result list, ordinary `?page=N` pagination, GET-based filter; direct keyword filter returned exactly 1/1 target result: PASS
 - Persistent profile run #1: PASS
 - Persistent profile run #2 using same profile: PASS
 - 1000-job soak: **1000/1000 SUCCEEDED**
