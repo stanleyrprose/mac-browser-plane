@@ -97,6 +97,8 @@ runtime.db / backups / doctor.json / result.json / screenshots = 0600
 
 Do not loosen these permissions to solve an access problem; fix the caller/runtime ownership instead.
 
+C0 HTTP/HTTPS uses macOS `/usr/bin/curl` with normal certificate verification. Do not add `-k` / `--insecure`. A C0 TLS/client failure must be classified before escalating to C1; it does not by itself prove that a site requires Browser execution.
+
 ## 7. CDP / C2 read-only diagnostics
 
 C1/C2 Chrome uses:
