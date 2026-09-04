@@ -8,8 +8,8 @@ Mac-centric local Browser Execution Plane implementing the frozen R1 v1.4.1 arch
 Mac mini
 = Browser Router / Runtime / State / Profiles / Evidence
 
-Browser egress VPS role
-= replaceable network capability only
+R1 network egress
+= Mac mini direct Internet connection only
 ```
 
 This repository does **not** replace `vps-worker-plane` or Bangkok SignalForge. Existing VPS Direct HTTP/API/ETL stays in the VPS Worker Runtime. The old future VPS Browser/Crawlee R3 direction is superseded by this project.
@@ -36,10 +36,14 @@ Implemented in the first milestone:
 - launchd worker template;
 - M1 1000-job soak harness.
 
-Not in M1:
+Network simplification for R1:
 
-- SEA edge routing;
-- China Browser capability;
+- Browser traffic uses the Mac mini direct Internet connection;
+- no SEA/VPS browser egress routing;
+- no China Browser egress.
+
+Still deferred after M1:
+
 - Chrome DevTools MCP C2;
 - Browser Use C3;
 - headed/human takeover;
