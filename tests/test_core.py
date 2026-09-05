@@ -63,6 +63,12 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertFalse(manifest["capabilities"]["remote_invocation"])
         self.assertTrue(manifest["security"]["tls_verification_required"])
         self.assertTrue(manifest["security"]["cdp_loopback_only"])
+        self.assertTrue(manifest["local_agent_adapter"]["enabled"])
+        self.assertEqual(manifest["local_agent_adapter"]["transport"], "stdio")
+        self.assertFalse(manifest["local_agent_adapter"]["network_listener"])
+        self.assertFalse(manifest["local_agent_adapter"]["generic_interaction"])
+        self.assertFalse(manifest["local_agent_adapter"]["arbitrary_javascript"])
+        self.assertFalse(manifest["local_agent_adapter"]["raw_cdp"])
 
 
 class DBTests(unittest.TestCase):

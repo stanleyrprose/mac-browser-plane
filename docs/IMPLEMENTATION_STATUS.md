@@ -47,6 +47,20 @@
 - [x] Navigation history / performance metrics / accessibility-tree diagnostics
 - [x] Diagnostic screenshot evidence
 
+## Post-R1 interface slice — Local Agent MCP Adapter v0
+
+This does **not** reopen or expand the completed R1 Browser execution baseline. It adds only a local stdio protocol adapter over the existing C0/C1/C2 JobStore/LaunchAgent execution path.
+
+- [x] official Python MCP SDK pinned as `mcp==2.1.1` under the `agent` optional dependency;
+- [x] installed `mac-browser-mcp` stdio entry point;
+- [x] exactly eight tools: capabilities / doctor / fetch / render / inspect / status / result / cancel;
+- [x] execution tools submit to the existing SQLite JobStore and never start a second Browser worker;
+- [x] agent-facing HTTP(S)-only URL guard rejects obvious local/non-global literal targets;
+- [x] no HTTP/WebSocket MCP listener, public port, extra launchd service, arbitrary JavaScript, raw CDP, click/type, or C3 Browser Agent surface;
+- [x] capability manifest records the local adapter separately while cross-host `production_enabled=false`, `invocation_mode=local_cli_only`, and `remote_invocation=false` remain unchanged.
+
+Detailed contract: `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`.
+
 ## Final verification
 
 - Python compilation: PASS

@@ -29,7 +29,7 @@ def main() -> int:
 
     run([str(python), "-m", "venv", str(venv_dir)])
     venv_python = venv_dir / "bin" / "python"
-    run([str(venv_python), "-m", "pip", "install", f"{repo}[browser]"])
+    run([str(venv_python), "-m", "pip", "install", f"{repo}[browser,agent]"])
 
     marker = app_dir / "INSTALLATION.txt"
     marker.write_text(
@@ -39,6 +39,7 @@ def main() -> int:
                 f"source_repo={repo}",
                 f"runtime_python={python}",
                 f"runtime_browserctl={venv_dir / 'bin' / 'browserctl'}",
+                f"runtime_mcp={venv_dir / 'bin' / 'mac-browser-mcp'}",
             ]
         )
         + "\n",
