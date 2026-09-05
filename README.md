@@ -52,7 +52,9 @@ M3A simplified C2 is now implemented:
 - read-only CDP allowlist only;
 - captures console, request/response summaries, navigation history, performance metrics, accessibility-tree count, and screenshot;
 - no `Runtime.evaluate`, navigation/input mutation, cookie/storage mutation, or request mocking through the diagnostic CDP surface;
-- no separate `chrome-devtools-mcp` server yet. Add an MCP adapter only when a real caller needs that protocol surface.
+- no separate `chrome-devtools-mcp` daemon/server.
+
+A post-R1 **Local Agent MCP Adapter v0** now provides a thin stdio-only protocol surface over the same verified runtime for local Codex/Hermes-class callers. It does not add a second Browser worker or expand C0/C1/C2 semantics. See `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`.
 
 Still deferred:
 
@@ -64,7 +66,7 @@ Still deferred:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[browser,dev]'
+.venv/bin/python -m pip install -e '.[browser,agent,dev]'
 .venv/bin/browserctl init
 .venv/bin/browserctl doctor
 ```
@@ -149,6 +151,18 @@ Machine-readable capability manifest:
 
 This reports the authorized R1 boundary, including direct-only network egress, C0/C1/C2 support, deferred C3/generic interaction, and `production_enabled=false` for cross-host production use.
 
+## Local Agent MCP Adapter
+
+For local MCP-capable agents, the installed runtime also provides a stdio-only executable:
+
+```text
+/Users/xu/agent-browser-runtime/app/venv/bin/mac-browser-mcp
+```
+
+It exposes exactly eight bounded tools: capabilities, doctor, C0 fetch, C1 render, C2 inspect, job status, job result, and job cancel. It does **not** expose click/type, arbitrary JavaScript, raw CDP, arbitrary Playwright, or C3 Browser Agent capabilities. The MCP host owns the child-process lifecycle; there is no MCP HTTP listener or second launchd service.
+
+See `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md` for the host/configuration contract and verification gates.
+
 SQLite-consistent runtime backup:
 
 ```bash
@@ -160,7 +174,7 @@ By default the snapshot is written under `~/agent-browser-runtime/backups/`. Thi
 ## Tests
 
 ```bash
-.venv/bin/python -m unittest -v tests.test_core
+.venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python scripts/soak_m1.py --jobs 1000 --browser-jobs 5 --submitters 8
 ```
 
@@ -195,4 +209,6 @@ The LaunchAgent requires a logged-in user session. Current host power/login beha
 - browser/session mutation has one control owner;
 - runtime state, backup, doctor/evidence JSON, and diagnostic screenshots are written `0600`; runtime/profile/evidence directories are `0700`;
 - R1 has no cross-host Browser API;
+- Local Agent MCP is stdio-only and starts no network listener;
+- Local Agent MCP does not expose generic interaction, arbitrary JavaScript, or raw CDP;
 - R1 does not install Browser runtime on VPS nodes.

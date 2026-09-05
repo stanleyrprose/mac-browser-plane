@@ -27,5 +27,13 @@
     "tls_verification_required": true,
     "cdp_loopback_only": true,
     "personal_chrome_profile_allowed": false
+  },
+  "local_agent_adapter": {
+    "enabled": true,
+    "transport": "stdio",
+    "network_listener": false,
+    "generic_interaction": false,
+    "arbitrary_javascript": false,
+    "raw_cdp": false
   }
 }
