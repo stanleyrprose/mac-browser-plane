@@ -60,6 +60,20 @@ This does **not** reopen or expand the completed R1 Browser execution baseline. 
 - [x] capability manifest records the local adapter separately while cross-host `production_enabled=false`, `invocation_mode=local_cli_only`, and `remote_invocation=false` remain unchanged.
 
 Detailed contract: `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`.
+Live closure: `docs/LOCAL_AGENT_MCP_ADAPTER_V0-LIVE-CLOSURE-2026-09-05.md`.
+
+Post-R1 adapter production-local verification:
+
+- [x] PR #14 merged to `main` at `ad697b9`; feature and merged-main CI PASS;
+- [x] isolated Python 3.13 test suite **26/26 PASS**;
+- [x] real stdio subprocess MCP handshake lists exactly eight authorized tools;
+- [x] production installer creates both `browserctl` and `mac-browser-mcp`;
+- [x] installed adapter live C0/C1/C2 calls against `https://example.com` all `SUCCEEDED / HTTP 200`;
+- [x] post-install `browserctl doctor = READY`;
+- [x] no residual `mac-browser-mcp` process and no additional MCP launchd service;
+- [x] local Codex registered `mac-browser-plane` as enabled stdio MCP;
+- [x] local Hermes registered `mac-browser-plane` as enabled stdio MCP and `hermes mcp test` discovered 8/8 tools;
+- [x] Browser engine returns to frozen/evidence-triggered status after adapter closure.
 
 ## Final verification
 
