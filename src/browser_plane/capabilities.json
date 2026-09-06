@@ -16,6 +16,7 @@
     "c1_render": true,
     "c1_generic_interaction": false,
     "c2_readonly_inspect": true,
+    "c3_browser_use": true,
     "c3_browser_agent": false,
     "persistent_profile": true,
     "screenshot": true,
@@ -32,7 +33,7 @@
     "enabled": true,
     "transport": "stdio",
     "network_listener": false,
-    "generic_interaction": false,
+    "generic_interaction": true,
     "arbitrary_javascript": false,
     "raw_cdp": false
   }

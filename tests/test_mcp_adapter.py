@@ -10,7 +10,7 @@ from unittest.mock import patch
 from mcp import Client, StdioServerParameters
 from mcp.server.mcpserver.exceptions import ToolError
 
-from browser_plane.mcp_adapter import _profile_mode, _submit_and_wait, _validate_url, mcp
+from browser_plane.mcp_adapter import _profile_mode, _submit_and_wait, _validate_browser_actions, _validate_url, mcp
 from browser_plane.models import Egress, JobState, ProfileMode, TaskType
 
 
@@ -59,6 +59,23 @@ class MCPAdapterContractTests(unittest.TestCase):
         with self.assertRaises(ToolError):
             _profile_mode("storage-state")
 
+    def test_browser_action_validation_accepts_use_surface_and_rejects_bad_steps(self) -> None:
+        actions = _validate_browser_actions(
+            [
+                {"action": "navigate", "url": "https://example.com/next"},
+                {"action": "click", "selector": "#go"},
+                {"action": "type", "selector": "#q", "text": "tender"},
+                {"action": "snapshot"},
+            ]
+        )
+        self.assertEqual([item["action"] for item in actions], ["navigate", "click", "type", "snapshot"])
+        with self.assertRaises(ToolError):
+            _validate_browser_actions([])
+        with self.assertRaises(ToolError):
+            _validate_browser_actions([{"action": "evaluate_js", "script": "1+1"}])
+        with self.assertRaises(ToolError):
+            _validate_browser_actions([{"action": "click"}])
+
     def test_submit_and_wait_uses_existing_runtime_queue_not_a_second_worker(self) -> None:
         jobs = _FakeJobs()
         with patch("browser_plane.mcp_adapter._runtime", return_value=(object(), object(), jobs)):
@@ -77,6 +94,28 @@ class MCPAdapterContractTests(unittest.TestCase):
         self.assertEqual(jobs.spec.profile_mode, ProfileMode.EPHEMERAL)
         self.assertFalse(jobs.spec.allow_egress_fallback)
         self.assertEqual(jobs.spec.retry_policy, "none")
+
+    def test_submit_and_wait_preserves_c3_use_actions(self) -> None:
+        jobs = _FakeJobs()
+        actions = ({"action": "snapshot", "timeout_ms": 10000},)
+        with patch("browser_plane.mcp_adapter._runtime", return_value=(object(), object(), jobs)):
+            result = _submit_and_wait(
+                task_type=TaskType.USE,
+                url="https://example.com",
+                profile="authenticated-work",
+                profile_mode=ProfileMode.EXCLUSIVE_PERSISTENT,
+                queue_timeout_sec=30,
+                max_run_sec=90,
+                client_timeout_sec=120,
+                evidence_policy="always",
+                control_mode="use",
+                actions=actions,
+            )
+        self.assertEqual(result["state"], JobState.SUCCEEDED.value)
+        self.assertEqual(jobs.spec.task_type, TaskType.USE)
+        self.assertEqual(jobs.spec.actions, actions)
+        self.assertEqual(jobs.spec.profile, "authenticated-work")
+        self.assertEqual(jobs.spec.profile_mode, ProfileMode.EXCLUSIVE_PERSISTENT)
 
 
 class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
@@ -99,6 +138,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
                 "browser_doctor",
                 "browser_fetch",
                 "browser_render",
+                "browser_use",
                 "browser_inspect",
                 "browser_status",
                 "browser_result",
@@ -121,7 +161,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
             async with Client(params) as client:
                 tools = await client.list_tools()
                 result = await client.call_tool("browser_capabilities", {})
-        self.assertEqual(len(tools.tools), 8)
+        self.assertEqual(len(tools.tools), 9)
         self.assertFalse(result.is_error)
         self.assertEqual(result.structured_content["local_agent_adapter"]["transport"], "stdio")
 

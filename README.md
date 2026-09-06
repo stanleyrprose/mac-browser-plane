@@ -149,7 +149,7 @@ Machine-readable capability manifest:
 .venv/bin/browserctl capabilities
 ```
 
-This reports the authorized R1 boundary, including direct-only network egress, C0/C1/C2 support, deferred C3/generic interaction, and `production_enabled=false` for cross-host production use.
+This reports the authorized R1 boundary plus post-R1 interface slices: direct-only network egress, C0/C1/C2, deterministic C3 Browser Use, and `production_enabled=false` for cross-host production use.
 
 ## Local Agent MCP Adapter
 
@@ -159,9 +159,9 @@ For local MCP-capable agents, the installed runtime also provides a stdio-only e
 /Users/xu/agent-browser-runtime/app/venv/bin/mac-browser-mcp
 ```
 
-It exposes exactly eight bounded tools: capabilities, doctor, C0 fetch, C1 render, C2 inspect, job status, job result, and job cancel. It does **not** expose click/type, arbitrary JavaScript, raw CDP, arbitrary Playwright, or C3 Browser Agent capabilities. The MCP host owns the child-process lifecycle; there is no MCP HTTP listener or second launchd service.
+It exposes nine tools: capabilities, doctor, C0 fetch, C1 render, C2 inspect, C3 `browser_use`, job status, job result, and job cancel. `browser_use` executes a deterministic action sequence (`navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, `download`) through the existing JobStore/LaunchAgent/Chrome path. It still does **not** expose arbitrary JavaScript, raw CDP, arbitrary Playwright objects, or an autonomous Browser Agent. The MCP host owns the child-process lifecycle; there is no MCP HTTP listener or second launchd service.
 
-See `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md` for the host/configuration contract and verification gates.
+The original eight-tool v0 adapter contract is documented in `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`; C3/M3B extends that same stdio surface without adding another runtime.
 
 SQLite-consistent runtime backup:
 

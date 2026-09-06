@@ -59,6 +59,7 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertTrue(manifest["capabilities"]["c1_render"])
         self.assertFalse(manifest["capabilities"]["c1_generic_interaction"])
         self.assertTrue(manifest["capabilities"]["c2_readonly_inspect"])
+        self.assertTrue(manifest["capabilities"]["c3_browser_use"])
         self.assertFalse(manifest["capabilities"]["c3_browser_agent"])
         self.assertFalse(manifest["capabilities"]["remote_invocation"])
         self.assertTrue(manifest["security"]["tls_verification_required"])
@@ -66,7 +67,7 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertTrue(manifest["local_agent_adapter"]["enabled"])
         self.assertEqual(manifest["local_agent_adapter"]["transport"], "stdio")
         self.assertFalse(manifest["local_agent_adapter"]["network_listener"])
-        self.assertFalse(manifest["local_agent_adapter"]["generic_interaction"])
+        self.assertTrue(manifest["local_agent_adapter"]["generic_interaction"])
         self.assertFalse(manifest["local_agent_adapter"]["arbitrary_javascript"])
         self.assertFalse(manifest["local_agent_adapter"]["raw_cdp"])
 
@@ -315,7 +316,7 @@ class ExecutorTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
-    def test_r1_rejects_regional_egress_and_c3_but_allows_inspect(self) -> None:
+    def test_r1_rejects_regional_egress_and_autonomous_agent_but_allows_inspect_and_use(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths, db, _ = make_runtime(tmp)
             executor = BrowserExecutor(paths, db)
@@ -325,6 +326,82 @@ class ExecutorTests(unittest.TestCase):
                 executor.preflight(JobSpec(task_type=TaskType.AGENT, url="data:text/plain,x"))
             with patch.object(BrowserExecutor, "_playwright_available", return_value=True):
                 executor.preflight(JobSpec(task_type=TaskType.INSPECT, url="data:text/plain,x"))
+                executor.preflight(
+                    JobSpec(task_type=TaskType.USE, url="data:text/plain,x", actions=({"action": "snapshot"},))
+                )
+
+    def test_c3_browser_use_executes_action_sequence_and_preserves_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            page = Mock()
+            page.url = "https://example.com/start"
+            page.title.return_value = "Example"
+
+            locators: dict[str, Mock] = {}
+
+            def locator(selector: str) -> Mock:
+                current = locators.setdefault(selector, Mock())
+                if selector == "body":
+                    current.inner_text.return_value = "body text"
+                if selector == "#select":
+                    current.select_option.return_value = ["b"]
+                return current
+
+            page.locator.side_effect = locator
+            response = Mock(status=204)
+
+            def goto(url: str, **_: object) -> Mock:
+                page.url = url
+                return response
+
+            page.goto.side_effect = goto
+            page.screenshot.side_effect = lambda path, **_: Path(path).write_bytes(b"png")
+
+            download = Mock()
+            download.suggested_filename = "report.pdf"
+            download.save_as.side_effect = lambda path: Path(path).write_bytes(b"pdf")
+
+            class DownloadContext:
+                value = download
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+            page.expect_download.side_effect = lambda **_: DownloadContext()
+            actions = (
+                {"action": "navigate", "url": "https://example.com/next"},
+                {"action": "click", "selector": "#button"},
+                {"action": "type", "selector": "#input", "text": "hello"},
+                {"action": "select", "selector": "#select", "value": "b"},
+                {"action": "press", "key": "Escape"},
+                {"action": "wait", "ms": 5},
+                {"action": "snapshot"},
+                {"action": "screenshot"},
+                {"action": "download", "selector": "#download"},
+            )
+
+            results = executor._run_browser_actions(page, "job-c3", actions)
+
+            self.assertEqual(len(results), 9)
+            self.assertEqual(results[0]["status"], 204)
+            locators["#button"].click.assert_called_once()
+            locators["#input"].fill.assert_called_once_with("hello", timeout=10_000)
+            locators["#select"].select_option.assert_called_once_with(value="b", timeout=10_000)
+            page.keyboard.press.assert_called_once_with("Escape")
+            page.wait_for_timeout.assert_called_once_with(5)
+            self.assertEqual(results[6]["text_excerpt"], "body text")
+
+            screenshot = Path(str(results[7]["path"]))
+            downloaded = Path(str(results[8]["path"]))
+            self.assertEqual(screenshot.read_bytes(), b"png")
+            self.assertEqual(downloaded.read_bytes(), b"pdf")
+            self.assertEqual(stat.S_IMODE(screenshot.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(downloaded.stat().st_mode), 0o600)
+            self.assertEqual(results[8]["sha256"], hashlib.sha256(b"pdf").hexdigest())
 
     def test_c2_readonly_cdp_allowlist_blocks_mutation(self) -> None:
         session = Mock()

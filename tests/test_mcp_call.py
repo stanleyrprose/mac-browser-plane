@@ -24,6 +24,7 @@ class McpCallUnitTests(unittest.TestCase):
                 "browser_doctor",
                 "browser_fetch",
                 "browser_render",
+                "browser_use",
                 "browser_inspect",
                 "browser_status",
                 "browser_result",

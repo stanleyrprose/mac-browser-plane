@@ -75,6 +75,23 @@ Post-R1 adapter production-local verification:
 - [x] local Hermes registered `mac-browser-plane` as enabled stdio MCP and `hermes mcp test` discovered 8/8 tools;
 - [x] Browser engine returns to frozen/evidence-triggered status after adapter closure.
 
+## Post-R1 interface slice — C3 Browser Use / M3B
+
+M3B adds deterministic multi-step browser interaction on top of the same runtime. It does not add a second Browser worker, network listener, LLM planner, or human-takeover subsystem.
+
+- [x] `TaskType.USE` is distinct from the still-deferred autonomous `TaskType.AGENT`;
+- [x] C3 reuses the existing SQLite JobStore, LaunchAgent worker, Profile Lease, Control Lease, Browser Process Registry, heartbeat, cancellation, and recovery path;
+- [x] MCP adds a ninth tool, `browser_use`;
+- [x] supported actions: `navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, `download`;
+- [x] screenshot/download artifacts remain under the runtime evidence tree with `0700` directories and `0600` files;
+- [x] timeout/failure/cancel semantics mark `partial_effect_possible=true` for C3 jobs when an interaction may already have occurred;
+- [x] arbitrary JavaScript and raw CDP remain outside the C3 action contract;
+- [x] production runtime reinstall + real stdio **9/9** tool verification;
+- [x] live C3 action smoke through the installed LaunchAgent worker: `https://example.com` -> click -> `https://www.iana.org/help/example-domains`, snapshot + screenshot, job `21623dd9-4cee-421b-a54f-f86bca7073fa`, `SUCCEEDED`;
+- [x] Cloud ChatGPT -> CodexPro -> `browser_use` live verification;
+- [x] post-live `browserctl doctor = READY`; SQLite integrity `ok`, no stale profile leases, no Browser Process Registry ownership residue;
+- [x] installed-runtime source test suite **33/33 PASS**.
+
 ## Final verification
 
 - Python compilation: PASS
@@ -169,7 +186,7 @@ If Hermes/Codex later needs an MCP protocol surface, add a thin adapter around t
 - SEA/VPS Browser egress
 - China Browser egress
 - separate Chrome DevTools MCP adapter/server
-- C3 Browser Use / M3B
+- autonomous Browser Agent / LLM planner
 - headed/human takeover
 - SignalForge-to-Mac unattended Provider Invocation Contract
 
