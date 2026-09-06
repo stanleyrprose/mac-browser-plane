@@ -20,13 +20,25 @@ mcp = MCPServer(
     instructions=(
         "Local stdio-only adapter over the existing Mac Browser Plane runtime. "
         "Use browser_fetch for strict-TLS HTTP acquisition, browser_render for deterministic "
-        "Chrome rendering, and browser_inspect for read-only diagnostics. Generic click/type, "
-        "arbitrary JavaScript, raw CDP, and remote invocation are not available."
+        "Chrome rendering, browser_inspect for read-only diagnostics, and browser_use for "
+        "multi-step Playwright interaction. Arbitrary JavaScript, raw CDP, and remote invocation "
+        "are not available."
     ),
 )
 
 _ALLOWED_PROFILES = {"public-research", "authenticated-work", "development"}
 _ALLOWED_PROFILE_MODES = {ProfileMode.EPHEMERAL.value, ProfileMode.EXCLUSIVE_PERSISTENT.value}
+_ALLOWED_BROWSER_ACTIONS = {
+    "navigate",
+    "click",
+    "type",
+    "select",
+    "press",
+    "wait",
+    "snapshot",
+    "screenshot",
+    "download",
+}
 
 
 def _runtime() -> tuple[RuntimePaths, RuntimeDB, JobStore]:
@@ -79,6 +91,75 @@ def _profile_mode(value: str) -> ProfileMode:
     return ProfileMode(value)
 
 
+def _validate_browser_actions(actions: list[dict[str, Any]]) -> tuple[dict[str, Any], ...]:
+    if not isinstance(actions, list) or not actions:
+        raise ToolError("actions must be a non-empty list")
+    if len(actions) > 50:
+        raise ToolError("actions may contain at most 50 steps")
+
+    normalized: list[dict[str, Any]] = []
+    for index, raw in enumerate(actions, start=1):
+        if not isinstance(raw, dict):
+            raise ToolError(f"action {index} must be an object")
+        action = dict(raw)
+        kind = str(action.get("action", "")).strip().lower()
+        if kind not in _ALLOWED_BROWSER_ACTIONS:
+            raise ToolError(f"action {index} has unsupported action: {kind or '<missing>'}")
+        action["action"] = kind
+
+        try:
+            timeout_ms = int(action.get("timeout_ms", 10_000))
+        except (TypeError, ValueError) as exc:
+            raise ToolError(f"action {index} timeout_ms must be an integer") from exc
+        if timeout_ms < 1 or timeout_ms > 60_000:
+            raise ToolError(f"action {index} timeout_ms must be between 1 and 60000")
+        action["timeout_ms"] = timeout_ms
+
+        selector = str(action.get("selector", "")).strip()
+        if kind in {"click", "type", "select", "download"} and not selector:
+            raise ToolError(f"action {index} ({kind}) requires selector")
+        if selector:
+            action["selector"] = selector
+
+        if kind == "navigate":
+            action["url"] = _validate_url(str(action.get("url", "")))
+            wait_until = str(action.get("wait_until", "domcontentloaded"))
+            if wait_until not in {"commit", "domcontentloaded", "load", "networkidle"}:
+                raise ToolError(f"action {index} navigate wait_until is invalid")
+            action["wait_until"] = wait_until
+        elif kind == "type":
+            text = str(action.get("text", ""))
+            if len(text) > 100_000:
+                raise ToolError(f"action {index} type text is too large")
+            action["text"] = text
+        elif kind == "select":
+            if "value" not in action:
+                raise ToolError(f"action {index} select requires value")
+            action["value"] = str(action["value"])
+        elif kind == "press":
+            key = str(action.get("key", "")).strip()
+            if not key:
+                raise ToolError(f"action {index} press requires key")
+            action["key"] = key
+        elif kind == "wait":
+            if selector:
+                state = str(action.get("state", "visible"))
+                if state not in {"attached", "detached", "visible", "hidden"}:
+                    raise ToolError(f"action {index} wait state is invalid")
+                action["state"] = state
+            else:
+                try:
+                    wait_ms = int(action.get("ms", 1000))
+                except (TypeError, ValueError) as exc:
+                    raise ToolError(f"action {index} wait ms must be an integer") from exc
+                if wait_ms < 0 or wait_ms > 30_000:
+                    raise ToolError(f"action {index} wait ms must be between 0 and 30000")
+                action["ms"] = wait_ms
+
+        normalized.append(action)
+    return tuple(normalized)
+
+
 def _public_job(row: dict[str, Any]) -> dict[str, Any]:
     result = json.loads(row["result_json"]) if row.get("result_json") else None
     return {
@@ -104,6 +185,7 @@ def _submit_and_wait(
     client_timeout_sec: int,
     evidence_policy: str,
     control_mode: str = "normal",
+    actions: tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any]:
     target = _validate_url(url)
     queue_timeout_sec = _bounded_seconds(queue_timeout_sec, name="queue_timeout_sec", minimum=1, maximum=600)
@@ -124,6 +206,7 @@ def _submit_and_wait(
         control_mode=control_mode,
         retry_policy="none",
         allow_egress_fallback=False,
+        actions=actions,
     )
     job_id = jobs.submit(spec)
     row = jobs.wait(job_id, float(client_timeout_sec), poll_sec=0.2)
@@ -188,6 +271,31 @@ def browser_render(
         max_run_sec=max_run_sec,
         client_timeout_sec=client_timeout_sec,
         evidence_policy="on_failure",
+    )
+
+
+@mcp.tool()
+def browser_use(
+    url: str,
+    actions: list[dict[str, Any]],
+    profile: str = "public-research",
+    profile_mode: str = "ephemeral",
+    queue_timeout_sec: int = 60,
+    max_run_sec: int = 180,
+    client_timeout_sec: int = 240,
+) -> dict[str, Any]:
+    """Run a deterministic multi-step C3 Browser Use workflow in runtime-owned Chrome."""
+    return _submit_and_wait(
+        task_type=TaskType.USE,
+        url=url,
+        profile=profile,
+        profile_mode=_profile_mode(profile_mode),
+        queue_timeout_sec=queue_timeout_sec,
+        max_run_sec=max_run_sec,
+        client_timeout_sec=client_timeout_sec,
+        evidence_policy="always",
+        control_mode="use",
+        actions=_validate_browser_actions(actions),
     )
 
 

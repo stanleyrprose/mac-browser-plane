@@ -35,6 +35,7 @@ class TaskType(StrEnum):
     FETCH = "fetch"
     AUTOMATE = "automate"
     INSPECT = "inspect"
+    USE = "use"
     AGENT = "agent"
 
 
@@ -66,9 +67,13 @@ class JobSpec:
     retry_policy: str = "none"
     allow_egress_fallback: bool = False
     idempotency_key: str | None = None
+    actions: tuple[dict[str, Any], ...] = ()
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "JobSpec":
+        raw_actions = data.get("actions", [])
+        if not isinstance(raw_actions, (list, tuple)):
+            raise ValueError("actions must be a list")
         return cls(
             task_type=TaskType(data.get("task_type", "fetch")),
             url=str(data["url"]),
@@ -83,4 +88,5 @@ class JobSpec:
             retry_policy=str(data.get("retry_policy", "none")),
             allow_egress_fallback=bool(data.get("allow_egress_fallback", False)),
             idempotency_key=data.get("idempotency_key"),
+            actions=tuple(dict(action) for action in raw_actions),
         )

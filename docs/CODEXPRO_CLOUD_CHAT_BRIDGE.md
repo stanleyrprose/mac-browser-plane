@@ -43,13 +43,14 @@ mac-browser-mcp-call call browser_fetch \
   --args-json '{"url":"https://example.com"}'
 ```
 
-The bridge is intentionally not a generic MCP launcher. It resolves only the `mac-browser-mcp` executable in the same runtime environment and permits only the eight frozen Browser Plane MCP tools:
+The bridge is intentionally not a generic MCP launcher. It resolves only the `mac-browser-mcp` executable in the same runtime environment and permits the current nine-tool Browser Plane MCP contract:
 
 ```text
 browser_capabilities
 browser_doctor
 browser_fetch
 browser_render
+browser_use
 browser_inspect
 browser_status
 browser_result
@@ -66,8 +67,8 @@ This does not change Browser Plane authority:
 C0 strict-TLS acquisition       enabled
 C1 deterministic render/read    enabled
 C2 read-only diagnostics        enabled
-C1 generic interaction          disabled
-C3 Browser Agent                disabled
+C3 Browser Use                  enabled
+C3 autonomous Browser Agent     disabled
 remote Browser API              none
 public MCP port                 none
 remote_invocation capability    false
@@ -91,7 +92,7 @@ ChatGPT Web
 
 One Browser Runtime and one MCP contract are reused by all clients.
 
-## Live verification
+## Initial bridge live verification — C0-C2 baseline
 
 PR #16 merged to `main` and merged-main CI passed.
 
@@ -131,3 +132,41 @@ elapsed_ms = 541
 Post-verification `browserctl doctor` returned `READY`, SQLite integrity `ok`, no stale profile leases, and no browser-process ownership ambiguity.
 
 This proves that cloud ChatGPT can consume the existing Mac Browser Plane MCP through CodexPro without making the MCP remotely network-addressable.
+
+## M3B / C3 Browser Use bridge extension — 2026-09-06
+
+The installed production runtime was reinstalled from `feat/m3b-browser-use` and the LaunchAgent reloaded. From this cloud ChatGPT conversation, CodexPro invoked the installed bridge and verified the expanded surface:
+
+```text
+mac-browser-mcp-call list
+ok = true
+tools = 9 / 9
+missing_tools = []
+unexpected_tools = []
+```
+
+A real C3 interaction job was then executed through the same path:
+
+```text
+ChatGPT Web
+-> CodexPro
+-> mac-browser-mcp-call call browser_use
+-> mac-browser-mcp (stdio)
+-> SQLite JobStore
+-> existing LaunchAgent worker
+-> runtime-owned Chrome / Playwright
+```
+
+Live job:
+
+```text
+start_url   = https://example.com
+interaction = snapshot -> click(a) -> wait(body) -> snapshot -> screenshot
+final_url   = https://www.iana.org/help/example-domains
+job_id      = 21623dd9-4cee-421b-a54f-f86bca7073fa
+state       = SUCCEEDED
+engine      = c3-browser-use
+HTTP        = 200
+```
+
+Post-live `browserctl doctor` returned `READY`, SQLite integrity `ok`, stale profile leases `[]`, Browser Process Registry ownership residue `[]`, and the installed-runtime source suite passed **33/33** tests.
