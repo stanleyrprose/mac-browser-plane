@@ -92,6 +92,17 @@ ChatGPT Web
 
 One Browser Runtime and one MCP contract are reused by all clients.
 
+### Current client verification matrix
+
+| Client | Path | Current discovery | C3 live status |
+| --- | --- | --- | --- |
+| Cloud ChatGPT | `ChatGPT -> CodexPro -> mac-browser-mcp-call -> mac-browser-mcp` | current 9-tool contract | **PASS** (`browser_use` live verified) |
+| OpenClaw | direct local stdio to `mac-browser-mcp` | **9 tools** via `openclaw mcp probe mac-browser-plane` | **PASS** (`browser_use` live verified to IANA) |
+| Hermes | direct local stdio to `mac-browser-mcp` | **9 tools** via `hermes mcp test mac-browser-plane` | **PASS** (`browser_use` one-shot live verified to IANA) |
+| Codex CLI/Desktop config | direct local stdio to `mac-browser-mcp` | enabled and points at the production runtime | **CONFIG READY**; the latest agent-run recheck was blocked before tool execution by the Codex provider usage quota, not by MCP transport |
+
+The historical 8-tool verification records below remain valid for the pre-C3 baseline. The current production contract is 9 tools because M3B added `browser_use`.
+
 ## Initial bridge live verification — C0-C2 baseline
 
 PR #16 merged to `main` and merged-main CI passed.

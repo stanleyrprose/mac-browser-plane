@@ -93,7 +93,8 @@ M3B adds deterministic multi-step browser interaction on top of the same runtime
 - [x] installed-runtime source test suite **33/33 PASS**;
 - [x] real-business acceptance on MPT reproduced a carousel overlay intercepting normal clicks; `force: true` regression path was added and live-verified without changing the default click behavior;
 - [x] real-business acceptance on MPA: C3 opened the tender list, clicked the latest 2026-08-21 tender into its detail page, C2 identified the embedded `Ctnr22Unit-Tender-2026.pdf`, and C0 preserved the raw 99,797-byte PDF with HTTP 200 and SHA-256 evidence;
-- [x] real-business acceptance on Myanmar National Trade Portal: a Materialize CSS hidden native `<select>` reproduced the default visibility timeout; `select force: true` was added and live-verified with `type -> select(force) -> press -> wait -> snapshot -> screenshot`, job `27672825-e1ad-4a0d-91b9-3df560867131`, `SUCCEEDED`.
+- [x] real-business acceptance on Myanmar National Trade Portal: a Materialize CSS hidden native `<select>` reproduced the default visibility timeout; `select force: true` was added and live-verified with `type -> select(force) -> press -> wait -> snapshot -> screenshot`, job `27672825-e1ad-4a0d-91b9-3df560867131`, `SUCCEEDED`;
+- [x] current multi-client verification: Cloud ChatGPT C3 via CodexPro PASS; OpenClaw direct stdio discovery **9 tools** and C3 live PASS; Hermes direct stdio discovery **9 tools** and C3 live PASS; Codex direct stdio registration points at the production runtime and is enabled, while the latest agent live recheck was blocked before tool execution by provider usage quota rather than MCP transport.
 
 ## Final verification
 
