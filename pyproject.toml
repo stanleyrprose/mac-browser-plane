@@ -17,6 +17,7 @@ dev = ["pytest>=8,<9"]
 [project.scripts]
 browserctl = "browser_plane.cli:main"
 mac-browser-mcp = "browser_plane.mcp_adapter:main"
+mac-browser-mcp-call = "browser_plane.mcp_call:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
