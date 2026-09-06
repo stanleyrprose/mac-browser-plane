@@ -506,8 +506,17 @@ class BrowserExecutor:
                     selector = str(action.get("selector", "")).strip()
                     if not selector or "value" not in action:
                         raise CapabilityError("select requires selector and value")
-                    selected = page.locator(selector).select_option(value=str(action["value"]), timeout=timeout_ms)
-                    item = {"step": index, "action": kind, "selector": selector, "selected": list(selected)}
+                    force = bool(action.get("force", False))
+                    selected = page.locator(selector).select_option(
+                        value=str(action["value"]), timeout=timeout_ms, force=force
+                    )
+                    item = {
+                        "step": index,
+                        "action": kind,
+                        "selector": selector,
+                        "force": force,
+                        "selected": list(selected),
+                    }
                 elif kind == "press":
                     key = str(action.get("key", "")).strip()
                     if not key:
