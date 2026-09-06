@@ -1,7 +1,7 @@
 # Cloud ChatGPT via CodexPro — Mac Browser Plane MCP Bridge
 
 Date: 2026-09-06
-Status: IMPLEMENTED / LIVE VERIFICATION PENDING
+Status: PRODUCTION LOCAL PASS / CLOUD CHAT VIA CODEXPRO LIVE VERIFIED
 
 ## Purpose
 
@@ -90,3 +90,44 @@ ChatGPT Web
 ```
 
 One Browser Runtime and one MCP contract are reused by all clients.
+
+## Live verification
+
+PR #16 merged to `main` and merged-main CI passed.
+
+The production runtime was reinstalled and the existing user LaunchAgent reloaded. From a cloud ChatGPT conversation using the CodexPro plugin, the bridge was invoked on the Mac and successfully traversed the real local MCP path:
+
+```text
+ChatGPT Web
+-> CodexPro
+-> /Users/xu/agent-browser-runtime/app/venv/bin/mac-browser-mcp-call
+-> mac-browser-mcp (stdio)
+-> Browser Plane worker
+-> C0 fetch
+```
+
+Tool-surface verification:
+
+```text
+mac-browser-mcp-call list
+ok = true
+tools = 8 / 8
+missing_tools = []
+unexpected_tools = []
+```
+
+Real cloud-chat browser job:
+
+```text
+URL        = https://mpt.com.mm/en/about-home/tenders/
+job_id     = c5f46294-440c-471f-9cf7-b6e577b5468b
+state      = SUCCEEDED
+engine     = c0-fetch
+HTTP       = 200
+body_bytes = 80,226
+elapsed_ms = 541
+```
+
+Post-verification `browserctl doctor` returned `READY`, SQLite integrity `ok`, no stale profile leases, and no browser-process ownership ambiguity.
+
+This proves that cloud ChatGPT can consume the existing Mac Browser Plane MCP through CodexPro without making the MCP remotely network-addressable.
