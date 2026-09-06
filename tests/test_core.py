@@ -374,7 +374,7 @@ class ExecutorTests(unittest.TestCase):
             page.expect_download.side_effect = lambda **_: DownloadContext()
             actions = (
                 {"action": "navigate", "url": "https://example.com/next"},
-                {"action": "click", "selector": "#button"},
+                {"action": "click", "selector": "#button", "force": True},
                 {"action": "type", "selector": "#input", "text": "hello"},
                 {"action": "select", "selector": "#select", "value": "b"},
                 {"action": "press", "key": "Escape"},
@@ -388,7 +388,7 @@ class ExecutorTests(unittest.TestCase):
 
             self.assertEqual(len(results), 9)
             self.assertEqual(results[0]["status"], 204)
-            locators["#button"].click.assert_called_once()
+            locators["#button"].click.assert_called_once_with(timeout=10_000, force=True)
             locators["#input"].fill.assert_called_once_with("hello", timeout=10_000)
             locators["#select"].select_option.assert_called_once_with(value="b", timeout=10_000)
             page.keyboard.press.assert_called_once_with("Escape")

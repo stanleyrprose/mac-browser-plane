@@ -63,18 +63,21 @@ class MCPAdapterContractTests(unittest.TestCase):
         actions = _validate_browser_actions(
             [
                 {"action": "navigate", "url": "https://example.com/next"},
-                {"action": "click", "selector": "#go"},
+                {"action": "click", "selector": "#go", "force": True},
                 {"action": "type", "selector": "#q", "text": "tender"},
                 {"action": "snapshot"},
             ]
         )
         self.assertEqual([item["action"] for item in actions], ["navigate", "click", "type", "snapshot"])
+        self.assertTrue(actions[1]["force"])
         with self.assertRaises(ToolError):
             _validate_browser_actions([])
         with self.assertRaises(ToolError):
             _validate_browser_actions([{"action": "evaluate_js", "script": "1+1"}])
         with self.assertRaises(ToolError):
             _validate_browser_actions([{"action": "click"}])
+        with self.assertRaises(ToolError):
+            _validate_browser_actions([{"action": "click", "selector": "#go", "force": "true"}])
 
     def test_submit_and_wait_uses_existing_runtime_queue_not_a_second_worker(self) -> None:
         jobs = _FakeJobs()

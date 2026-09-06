@@ -486,8 +486,15 @@ class BrowserExecutor:
                     selector = str(action.get("selector", "")).strip()
                     if not selector:
                         raise CapabilityError("click requires selector")
-                    page.locator(selector).click(timeout=timeout_ms)
-                    item = {"step": index, "action": kind, "selector": selector, "url": page.url}
+                    force = bool(action.get("force", False))
+                    page.locator(selector).click(timeout=timeout_ms, force=force)
+                    item = {
+                        "step": index,
+                        "action": kind,
+                        "selector": selector,
+                        "force": force,
+                        "url": page.url,
+                    }
                 elif kind == "type":
                     selector = str(action.get("selector", "")).strip()
                     if not selector:
