@@ -82,7 +82,7 @@ M3B adds deterministic multi-step browser interaction on top of the same runtime
 - [x] `TaskType.USE` is distinct from the still-deferred autonomous `TaskType.AGENT`;
 - [x] C3 reuses the existing SQLite JobStore, LaunchAgent worker, Profile Lease, Control Lease, Browser Process Registry, heartbeat, cancellation, and recovery path;
 - [x] MCP adds a ninth tool, `browser_use`;
-- [x] supported actions: `navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, `download`;
+- [x] supported actions: `navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, `download`; `click` also supports explicit `force: true` for known overlay/interception cases;
 - [x] screenshot/download artifacts remain under the runtime evidence tree with `0700` directories and `0600` files;
 - [x] timeout/failure/cancel semantics mark `partial_effect_possible=true` for C3 jobs when an interaction may already have occurred;
 - [x] arbitrary JavaScript and raw CDP remain outside the C3 action contract;
@@ -90,7 +90,9 @@ M3B adds deterministic multi-step browser interaction on top of the same runtime
 - [x] live C3 action smoke through the installed LaunchAgent worker: `https://example.com` -> click -> `https://www.iana.org/help/example-domains`, snapshot + screenshot, job `21623dd9-4cee-421b-a54f-f86bca7073fa`, `SUCCEEDED`;
 - [x] Cloud ChatGPT -> CodexPro -> `browser_use` live verification;
 - [x] post-live `browserctl doctor = READY`; SQLite integrity `ok`, no stale profile leases, no Browser Process Registry ownership residue;
-- [x] installed-runtime source test suite **33/33 PASS**.
+- [x] installed-runtime source test suite **33/33 PASS**;
+- [x] real-business acceptance on MPT reproduced a carousel overlay intercepting normal clicks; `force: true` regression path was added and live-verified without changing the default click behavior;
+- [x] real-business acceptance on MPA: C3 opened the tender list, clicked the latest 2026-08-21 tender into its detail page, C2 identified the embedded `Ctnr22Unit-Tender-2026.pdf`, and C0 preserved the raw 99,797-byte PDF with HTTP 200 and SHA-256 evidence.
 
 ## Final verification
 
