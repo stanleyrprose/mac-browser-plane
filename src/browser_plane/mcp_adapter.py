@@ -120,9 +120,9 @@ def _validate_browser_actions(actions: list[dict[str, Any]]) -> tuple[dict[str, 
             raise ToolError(f"action {index} ({kind}) requires selector")
         if selector:
             action["selector"] = selector
-        if kind == "click" and "force" in action:
+        if kind in {"click", "select"} and "force" in action:
             if not isinstance(action["force"], bool):
-                raise ToolError(f"action {index} click force must be a boolean")
+                raise ToolError(f"action {index} {kind} force must be a boolean")
             action["force"] = bool(action["force"])
 
         if kind == "navigate":

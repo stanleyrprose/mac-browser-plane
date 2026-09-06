@@ -376,7 +376,7 @@ class ExecutorTests(unittest.TestCase):
                 {"action": "navigate", "url": "https://example.com/next"},
                 {"action": "click", "selector": "#button", "force": True},
                 {"action": "type", "selector": "#input", "text": "hello"},
-                {"action": "select", "selector": "#select", "value": "b"},
+                {"action": "select", "selector": "#select", "value": "b", "force": True},
                 {"action": "press", "key": "Escape"},
                 {"action": "wait", "ms": 5},
                 {"action": "snapshot"},
@@ -390,7 +390,7 @@ class ExecutorTests(unittest.TestCase):
             self.assertEqual(results[0]["status"], 204)
             locators["#button"].click.assert_called_once_with(timeout=10_000, force=True)
             locators["#input"].fill.assert_called_once_with("hello", timeout=10_000)
-            locators["#select"].select_option.assert_called_once_with(value="b", timeout=10_000)
+            locators["#select"].select_option.assert_called_once_with(value="b", timeout=10_000, force=True)
             page.keyboard.press.assert_called_once_with("Escape")
             page.wait_for_timeout.assert_called_once_with(5)
             self.assertEqual(results[6]["text_excerpt"], "body text")
