@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 from pathlib import Path
 
 from .config import RuntimePaths
@@ -48,6 +49,29 @@ class Doctor:
         chrome = Path(os.environ.get("BROWSER_PLANE_CHROME", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"))
         add("chrome", chrome.exists() and os.access(chrome, os.X_OK), str(chrome), degraded=False)
         add("playwright_python", importlib.util.find_spec("playwright") is not None, "required for C1", degraded=True)
+        configured_lightpanda = os.environ.get("BROWSER_PLANE_LIGHTPANDA")
+        lightpanda_candidates = [
+            configured_lightpanda,
+            shutil.which("lightpanda"),
+            "/opt/homebrew/bin/lightpanda",
+            "/usr/local/bin/lightpanda",
+        ]
+        lightpanda_path = next(
+            (
+                str(path)
+                for raw in lightpanda_candidates
+                if raw
+                for path in [Path(raw).expanduser()]
+                if path.is_file() and os.access(path, os.X_OK)
+            ),
+            None,
+        )
+        add(
+            "lightpanda_optional",
+            True,
+            {"installed": lightpanda_path is not None, "path": lightpanda_path},
+            degraded=True,
+        )
 
         stale = LeaseManager(self.db).list_stale_profiles()
         add("stale_profile_leases", not stale, stale, degraded=True)

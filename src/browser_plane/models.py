@@ -52,10 +52,17 @@ class ProfileMode(StrEnum):
     EXCLUSIVE_PERSISTENT = "exclusive-persistent"
 
 
+class BrowserEngine(StrEnum):
+    AUTO = "auto"
+    CHROME = "chrome"
+    LIGHTPANDA = "lightpanda"
+
+
 @dataclass(frozen=True)
 class JobSpec:
     task_type: TaskType
     url: str
+    engine: BrowserEngine = BrowserEngine.AUTO
     egress: Egress = Egress.AUTO
     profile: str = "public-research"
     profile_mode: ProfileMode = ProfileMode.EPHEMERAL
@@ -77,6 +84,7 @@ class JobSpec:
         return cls(
             task_type=TaskType(data.get("task_type", "fetch")),
             url=str(data["url"]),
+            engine=BrowserEngine(data.get("engine", "auto")),
             egress=Egress(data.get("egress", "auto")),
             profile=str(data.get("profile", "public-research")),
             profile_mode=ProfileMode(data.get("profile_mode", "ephemeral")),

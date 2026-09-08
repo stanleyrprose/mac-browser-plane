@@ -20,6 +20,8 @@
     "c3_semantic_targeting": true,
     "c3_aria_snapshot": true,
     "c3_browser_agent": false,
+    "lightpanda_engine": true,
+    "engine_auto_routing": true,
     "persistent_profile": true,
     "screenshot": true,
     "binary_artifact": true,
@@ -43,6 +45,35 @@
       "text_target"
     ],
     "c3_planning": "external_caller"
+  },
+  "engine_routing": {
+    "policy": "auto_v1",
+    "caller_selects_engine": false,
+    "engines": [
+      "curl",
+      "lightpanda",
+      "chrome"
+    ],
+    "rules": {
+      "c0_fetch": "curl",
+      "c1_ephemeral_js_dom": "lightpanda_then_chrome_fallback",
+      "c1_persistent_profile": "chrome",
+      "c2_inspect": "chrome",
+      "c3_browser_use": "chrome"
+    },
+    "fallback": {
+      "lightpanda_to_chrome": true,
+      "scope": "c1_ephemeral_only",
+      "only_when_replay_is_side_effect_safe": true
+    },
+    "lightpanda_process": {
+      "transport": "native_fetch_subprocess",
+      "persistent_daemon": false,
+      "telemetry_disabled": true,
+      "core_dump_disabled": true,
+      "native_mcp_exposed": false,
+      "native_agent_exposed": false
+    }
   },
   "security": {
     "tls_verification_required": true,
