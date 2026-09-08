@@ -116,10 +116,16 @@ The first Mac integration on 2026-09-08 installed upstream Camoufox `v152.0.4-be
 Using an isolated Browser Plane runtime home:
 
 - C1 explicit Camoufox against `https://example.com`: `SUCCEEDED`, HTTP 200, `engine_route.selected=camoufox`, no fallback;
-- C3 explicit Camoufox: snapshot -> semantic `role=link,name=Learn more` click -> wait -> snapshot -> screenshot; reached `https://www.iana.org/help/example-domains`, HTTP 200;
+- C3 explicit Camoufox: snapshot -> semantic `role=link,name=Learn more` click -> wait -> snapshot -> screenshot; reached `https://www.iana.org/help/example-domains`, HTTP 200.
+
+Using the installed production runtime and LaunchAgent worker:
+
+- queued C1 explicit Camoufox: `SUCCEEDED`, HTTP 200, `engine_route.selected=camoufox`, no fallback;
+- queued C3 explicit Camoufox: snapshot -> semantic click -> wait -> snapshot -> screenshot; reached `https://www.iana.org/help/example-domains`, `SUCCEEDED`, HTTP 200, no fallback;
 - post-run `browser_doctor = READY`;
 - Browser Process Registry ownership residue: none;
-- stale Profile Leases: none.
+- stale Profile Leases: none;
+- production stdio MCP still exposes exactly the original nine Browser Plane tools and no Camoufox/Camofox MCP or REST surface.
 
 ## Promotion gate
 

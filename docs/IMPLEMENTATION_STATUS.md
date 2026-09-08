@@ -147,7 +147,10 @@ This slice adds upstream Camoufox as the fourth internal Browser Plane engine wh
 - [x] no `jo-inc/camofox-browser` REST server, MCP, state database, proxy/GeoIP routing, VNC/human takeover, plugin macros, or arbitrary JavaScript surface is introduced;
 - [x] isolated live C1 smoke against `https://example.com`: `SUCCEEDED / HTTP 200`, selected `camoufox`, no fallback;
 - [x] isolated live C3 smoke: snapshot -> semantic click -> wait -> snapshot -> screenshot reached `https://www.iana.org/help/example-domains`, `SUCCEEDED / HTTP 200`;
-- [x] post-live `browser_doctor = READY`, stale Profile Leases `[]`, Browser Process Registry ownership residue `[]`;
+- [x] production LaunchAgent queued C1 smoke: `SUCCEEDED / HTTP 200`, `engine_route.selected=camoufox`, no fallback;
+- [x] production LaunchAgent queued C3 smoke: snapshot -> semantic click -> wait -> snapshot -> screenshot reached `https://www.iana.org/help/example-domains`, `SUCCEEDED / HTTP 200`, `engine_route.selected=camoufox`, no fallback;
+- [x] post-production `browser_doctor = READY`, stale Profile Leases `[]`, Browser Process Registry ownership residue `[]`;
+- [x] production stdio MCP surface remains exactly nine tools with no Camoufox/Camofox MCP or REST surface exposed;
 - [x] current full source regression suite: **56/56 PASS**.
 
 Detailed routing contract: `docs/CAMOUFOX_ENGINE_ROUTING.md`.
