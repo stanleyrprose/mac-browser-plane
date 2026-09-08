@@ -31,7 +31,8 @@ The agent does not auto-escalate capabilities.
 
 The Mac agent independently validates the locally installed provider authorization projection before MCP execution:
 
-- provider/transport identity;
+- provider/transport identity and claim/request correlation;
+- claim/request expiry before MCP execution;
 - ProviderRequest SHA-256;
 - source policy version;
 - source capability allowlist;
@@ -84,10 +85,10 @@ The actual dedicated key/user/authorized_keys forced-command installation remain
 
 ```text
 .venv/bin/python -m pytest tests/test_provider_agent.py -q
-11 passed
+12 passed
 
 .venv/bin/python -m pytest -q
-45 passed
+46 passed
 ```
 
 No production runtime reinstall, LaunchAgent installation, credential creation, or provider enable flag occurs in this feature slice.
