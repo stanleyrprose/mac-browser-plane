@@ -10,7 +10,8 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
-browser = ["playwright>=1.55,<2"]
+browser = ["playwright>=1.55,<1.63"]
+antidetect = ["camoufox==0.5.6"]
 agent = ["mcp==2.1.1"]
 dev = ["pytest>=8,<9"]
 

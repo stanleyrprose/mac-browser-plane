@@ -24,7 +24,7 @@ C3 Browser Use         -> browser_use
 
 C0–C3 are COMPLETE. C3 Semantic Targeting is COMPLETE.
 
-Internal engine routing is transparent to callers: C0 uses system `curl`; ephemeral C1 prefers Lightpanda when installed and safely falls back to Chrome; persistent-profile C1, all C2 diagnostics, and all C3 Browser Use remain Chrome in routing v1. Do not bypass `mac-browser-plane` to call Lightpanda MCP/Agent directly. Machine-readable routing truth is in `src/browser_plane/capabilities.json`; rationale is in `docs/LIGHTPANDA_ENGINE_ROUTING.md`.
+Internal engine routing is transparent to callers: C0 uses system `curl`; ephemeral C1 prefers Lightpanda when installed and safely falls back to Chrome; persistent-profile C1, all C2 diagnostics, and ordinary AUTO C3 Browser Use remain Chrome. Camoufox is the fourth optional anti-detection engine for selective ephemeral C1/C3 jobs only; AUTO never promotes to Camoufox without explicit/source evidence, and Camoufox has no automatic cross-engine replay fallback. Do not bypass `mac-browser-plane` to call Lightpanda or Camoufox MCP/server surfaces directly. Machine-readable routing truth is in `src/browser_plane/capabilities.json`; rationale is in `docs/LIGHTPANDA_ENGINE_ROUTING.md` and `docs/CAMOUFOX_ENGINE_ROUTING.md`.
 
 `browser_use` supports deterministic `navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, and `download`, with CSS or semantic targeting (`role`/name, `label`, `text_target`).
 

@@ -64,16 +64,26 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertTrue(manifest["capabilities"]["c3_aria_snapshot"])
         self.assertFalse(manifest["capabilities"]["c3_browser_agent"])
         self.assertTrue(manifest["capabilities"]["lightpanda_engine"])
+        self.assertTrue(manifest["capabilities"]["camoufox_engine"])
         self.assertTrue(manifest["capabilities"]["engine_auto_routing"])
-        self.assertEqual(manifest["engine_routing"]["policy"], "auto_v1")
+        self.assertEqual(manifest["engine_routing"]["policy"], "auto_v2")
         self.assertFalse(manifest["engine_routing"]["caller_selects_engine"])
+        self.assertIn("camoufox", manifest["engine_routing"]["engines"])
         self.assertEqual(
             manifest["engine_routing"]["rules"]["c1_ephemeral_js_dom"],
             "lightpanda_then_chrome_fallback",
         )
         self.assertEqual(manifest["engine_routing"]["rules"]["c2_inspect"], "chrome")
         self.assertEqual(manifest["engine_routing"]["rules"]["c3_browser_use"], "chrome")
-        self.assertEqual(manifest["engine_routing"]["fallback"]["scope"], "c1_ephemeral_only")
+        self.assertEqual(
+            manifest["engine_routing"]["rules"]["camoufox_c1_c3"],
+            "explicit_or_source_evidence_only",
+        )
+        self.assertEqual(
+            manifest["engine_routing"]["fallback"]["scope"],
+            "c1_ephemeral_lightpanda_only",
+        )
+        self.assertFalse(manifest["engine_routing"]["fallback"]["camoufox_automatic_fallback"])
         self.assertTrue(manifest["capabilities"]["remote_invocation"])
         self.assertTrue(manifest["security"]["tls_verification_required"])
         self.assertTrue(manifest["security"]["cdp_loopback_only"])
@@ -508,6 +518,84 @@ class ExecutorTests(unittest.TestCase):
             with patch.object(BrowserExecutor, "_lightpanda_binary", return_value=Path("/tmp/lightpanda")):
                 with self.assertRaisesRegex(CapabilityError, "c3_requires_chrome_v1"):
                     executor._select_browser_engine(spec, inspect_mode=False, use_mode=True)
+
+    def test_explicit_camoufox_routes_ephemeral_c1_and_c3_without_auto_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            c1 = JobSpec(
+                task_type=TaskType.AUTOMATE,
+                url="https://example.com",
+                engine=BrowserEngine.CAMOUFOX,
+            )
+            c3 = JobSpec(
+                task_type=TaskType.USE,
+                url="https://example.com",
+                engine=BrowserEngine.CAMOUFOX,
+                actions=({"action": "snapshot"},),
+            )
+            with patch.object(BrowserExecutor, "_camoufox_available", return_value=True):
+                self.assertEqual(
+                    executor._select_browser_engine(c1, inspect_mode=False, use_mode=False),
+                    (BrowserEngine.CAMOUFOX, "explicit_camoufox"),
+                )
+                self.assertEqual(
+                    executor._select_browser_engine(c3, inspect_mode=False, use_mode=True),
+                    (BrowserEngine.CAMOUFOX, "explicit_camoufox"),
+                )
+
+            with (
+                patch.object(BrowserExecutor, "_camoufox_available", return_value=True),
+                patch.object(
+                    BrowserExecutor,
+                    "_run_camoufox",
+                    return_value={"engine": "c1-camoufox", "browser_engine": "camoufox"},
+                ) as run_camoufox,
+            ):
+                result = executor._run_browser("job-camoufox", c1, None)
+            run_camoufox.assert_called_once_with("job-camoufox", c1, use_mode=False)
+            self.assertEqual(result["engine_route"]["selected"], "camoufox")
+            self.assertEqual(result["engine_route"]["attempted"], ["camoufox"])
+            self.assertIsNone(result["engine_route"]["fallback"])
+
+    def test_camoufox_v1_rejects_c2_and_persistent_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            c2 = JobSpec(
+                task_type=TaskType.INSPECT,
+                url="https://example.com",
+                engine=BrowserEngine.CAMOUFOX,
+            )
+            persistent = JobSpec(
+                task_type=TaskType.AUTOMATE,
+                url="https://example.com",
+                engine=BrowserEngine.CAMOUFOX,
+                profile_mode=ProfileMode.EXCLUSIVE_PERSISTENT,
+            )
+            with patch.object(BrowserExecutor, "_camoufox_available", return_value=True):
+                with self.assertRaisesRegex(CapabilityError, "c2_requires_chrome_diagnostics"):
+                    executor._select_browser_engine(c2, inspect_mode=True, use_mode=False)
+                with self.assertRaisesRegex(CapabilityError, "camoufox_v1_ephemeral_only"):
+                    executor._select_browser_engine(persistent, inspect_mode=False, use_mode=False)
+
+    def test_auto_router_never_promotes_camoufox_without_source_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            c3 = JobSpec(
+                task_type=TaskType.USE,
+                url="https://example.com",
+                actions=({"action": "snapshot"},),
+            )
+            with (
+                patch.object(BrowserExecutor, "_camoufox_available", return_value=True),
+                patch.object(BrowserExecutor, "_lightpanda_binary", return_value=None),
+            ):
+                self.assertEqual(
+                    executor._select_browser_engine(c3, inspect_mode=False, use_mode=True),
+                    (BrowserEngine.CHROME, "c3_requires_chrome_v1"),
+                )
 
     def test_c2_readonly_cdp_allowlist_blocks_mutation(self) -> None:
         session = Mock()

@@ -29,7 +29,7 @@ def main() -> int:
 
     run([str(python), "-m", "venv", str(venv_dir)])
     venv_python = venv_dir / "bin" / "python"
-    run([str(venv_python), "-m", "pip", "install", f"{repo}[browser,agent]"])
+    run([str(venv_python), "-m", "pip", "install", f"{repo}[browser,antidetect,agent]"])
 
     marker = app_dir / "INSTALLATION.txt"
     marker.write_text(

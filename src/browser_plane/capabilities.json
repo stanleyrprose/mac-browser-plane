@@ -21,6 +21,7 @@
     "c3_aria_snapshot": true,
     "c3_browser_agent": false,
     "lightpanda_engine": true,
+    "camoufox_engine": true,
     "engine_auto_routing": true,
     "persistent_profile": true,
     "screenshot": true,
@@ -47,23 +48,26 @@
     "c3_planning": "external_caller"
   },
   "engine_routing": {
-    "policy": "auto_v1",
+    "policy": "auto_v2",
     "caller_selects_engine": false,
     "engines": [
       "curl",
       "lightpanda",
-      "chrome"
+      "chrome",
+      "camoufox"
     ],
     "rules": {
       "c0_fetch": "curl",
       "c1_ephemeral_js_dom": "lightpanda_then_chrome_fallback",
       "c1_persistent_profile": "chrome",
       "c2_inspect": "chrome",
-      "c3_browser_use": "chrome"
+      "c3_browser_use": "chrome",
+      "camoufox_c1_c3": "explicit_or_source_evidence_only"
     },
     "fallback": {
       "lightpanda_to_chrome": true,
-      "scope": "c1_ephemeral_only",
+      "camoufox_automatic_fallback": false,
+      "scope": "c1_ephemeral_lightpanda_only",
       "only_when_replay_is_side_effect_safe": true
     },
     "lightpanda_process": {
@@ -73,6 +77,15 @@
       "core_dump_disabled": true,
       "native_mcp_exposed": false,
       "native_agent_exposed": false
+    },
+    "camoufox_process": {
+      "transport": "runtime_owned_python_subprocess",
+      "persistent_daemon": false,
+      "rest_server_exposed": false,
+      "native_mcp_exposed": false,
+      "jo_camofox_runtime_used": false,
+      "persistent_profile_supported": false,
+      "proxy_routing_enabled": false
     }
   },
   "security": {
