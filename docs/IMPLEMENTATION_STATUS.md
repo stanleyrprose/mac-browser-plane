@@ -112,6 +112,25 @@ M3C keeps the existing nine-tool MCP surface and deterministic executor, but mak
 - [x] live snapshots returned bounded ARIA trees before and after navigation (`aria_snapshot_truncated=false` in this smoke);
 - [x] post-install source suite **34/34 PASS**; post-live `browser_doctor = READY`, SQLite integrity `ok`, stale Profile Leases `[]`, Browser Process Registry ownership residue `[]`.
 
+## Post-R1 engine slice — Lightpanda C1 Fast Path
+
+This slice adds Lightpanda as an internal execution engine without changing the existing nine-tool MCP surface, worker model, JobStore, leases, evidence contract, or caller planning boundary.
+
+- [x] `BrowserEngine` supports internal `auto/chrome/lightpanda` routing while the public MCP surface remains engine-agnostic;
+- [x] C0 remains macOS system `curl`;
+- [x] ephemeral C1 `browser_render` prefers Lightpanda native `fetch --json --dump html` when a runnable binary is present;
+- [x] Lightpanda C1 runs as a runtime-owned subprocess with Browser Process Registry ownership, Control Lease, cancellation participation, telemetry disabled, and core dumps disabled;
+- [x] C1 Lightpanda execution/compatibility/quality failures safely fall back to Chrome and persist an `engine_route` record with attempted engines and bounded fallback reason;
+- [x] persistent-profile C1 remains Chrome;
+- [x] C2 remains Chrome because the production diagnostic contract requires Chrome CDP semantics and real screenshot evidence;
+- [x] all C3 remains Chrome in routing v1 because uncertain interaction replay could duplicate side effects;
+- [x] no Lightpanda MCP, native Agent, daemon, network listener, second Browser worker, or domain-specific source routing is introduced;
+- [x] installed Lightpanda version at implementation time: `1.0.0-nightly.9268+909108e29` via Homebrew;
+- [x] native Lightpanda live C1 smoke against `https://example.com`: `SUCCEEDED / HTTP 200`, selected `lightpanda`, no fallback, no residual Browser Process Registry ownership, no residual Control Lease;
+- [x] current full source regression suite: **54/54 PASS**.
+
+Detailed routing contract: `docs/LIGHTPANDA_ENGINE_ROUTING.md`.
+
 ## Final verification
 
 - Python compilation: PASS
