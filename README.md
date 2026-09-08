@@ -73,8 +73,9 @@ Implemented in the first milestone:
 - Profile Lease and browser-session Control Lease;
 - Browser Process Registry using PID + macOS process-start token;
 - C0 Direct Fetch using macOS `/usr/bin/curl` for HTTP/HTTPS with normal TLS verification; every HTTP response is preserved as a private raw artifact with SHA-256, with `text_excerpt` added only for textual content;
-- C1 Playwright attached to runtime-owned local Google Chrome;
-- dynamic loopback CDP port (`--remote-debugging-port=0`);
+- C1 internal engine routing: ephemeral `browser_render` prefers runtime-owned Lightpanda native DOM/JS rendering when available, with safe Chrome fallback; persistent-profile C1 remains Chrome;
+- Chrome C1/C2/C3 uses Playwright attached to runtime-owned local Google Chrome;
+- dynamic loopback CDP port (`--remote-debugging-port=0`) for Chrome sessions;
 - explicit 1440×900 Browser viewport;
 - Evidence `result.json`;
 - `browserctl doctor`;
@@ -123,6 +124,14 @@ Override only when necessary:
 ```bash
 export BROWSER_PLANE_CHROME=/path/to/Chrome
 ```
+
+Optional Lightpanda C1 fast path on Apple Silicon Macs:
+
+```bash
+brew install lightpanda-io/browser/lightpanda
+```
+
+Browser Plane auto-detects `lightpanda` from `PATH`, `/opt/homebrew/bin/lightpanda`, or `/usr/local/bin/lightpanda`; `BROWSER_PLANE_LIGHTPANDA` may override the binary path. Lightpanda is an internal ephemeral-C1 engine only in routing v1. C2/C3 and persistent-profile C1 remain Chrome. See `docs/LIGHTPANDA_ENGINE_ROUTING.md`.
 
 No Playwright-managed Chromium download is required.
 

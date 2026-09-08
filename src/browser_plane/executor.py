@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+from html.parser import HTMLParser
 import tempfile
 import threading
 import time
@@ -17,12 +18,59 @@ from urllib.request import Request, urlopen
 from .config import RuntimePaths
 from .db import JobStore, RuntimeDB
 from .leases import LeaseManager
-from .models import Egress, JobSpec, JobState, ProfileMode, TaskType
+from .models import BrowserEngine, Egress, JobSpec, JobState, ProfileMode, TaskType
 from .processes import BrowserProcessRegistry
 
 
 class CapabilityError(RuntimeError):
     pass
+
+
+class _RenderedHTMLTextParser(HTMLParser):
+    _SKIP_TAGS = {"script", "style", "noscript", "template"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._in_title = False
+        self._in_body = False
+        self._skip_depth = 0
+        self.title_parts: list[str] = []
+        self.body_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        name = tag.lower()
+        if name == "title":
+            self._in_title = True
+        if name == "body":
+            self._in_body = True
+        elif self._in_body and name in self._SKIP_TAGS:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        name = tag.lower()
+        if name == "title":
+            self._in_title = False
+        if self._in_body and name in self._SKIP_TAGS and self._skip_depth:
+            self._skip_depth -= 1
+        elif name == "body":
+            self._in_body = False
+
+    def handle_data(self, data: str) -> None:
+        text = " ".join(data.split())
+        if not text:
+            return
+        if self._in_title:
+            self.title_parts.append(text)
+        if self._in_body and self._skip_depth == 0:
+            self.body_parts.append(text)
+
+    @property
+    def title(self) -> str:
+        return " ".join(self.title_parts).strip()
+
+    @property
+    def body_text(self) -> str:
+        return "\n".join(self.body_parts).strip()
 
 
 class BrowserExecutor:
@@ -86,11 +134,11 @@ class BrowserExecutor:
             if spec.task_type == TaskType.FETCH:
                 result = self._run_fetch(job_id, spec)
             elif spec.task_type == TaskType.AUTOMATE:
-                result = self._run_playwright(job_id, spec, profile_epoch)
+                result = self._run_browser(job_id, spec, profile_epoch)
             elif spec.task_type == TaskType.INSPECT:
-                result = self._run_playwright(job_id, spec, profile_epoch, inspect_mode=True)
+                result = self._run_browser(job_id, spec, profile_epoch, inspect_mode=True)
             elif spec.task_type == TaskType.USE:
-                result = self._run_playwright(job_id, spec, profile_epoch, use_mode=True)
+                result = self._run_browser(job_id, spec, profile_epoch, use_mode=True)
             else:
                 raise CapabilityError(f"unsupported task type {spec.task_type}")
             self._write_evidence(job_id, result)
@@ -259,6 +307,269 @@ class BrowserExecutor:
             "application/xhtml+xml",
         }
 
+    def _run_browser(
+        self,
+        job_id: str,
+        spec: JobSpec,
+        profile_epoch: int | None,
+        *,
+        inspect_mode: bool = False,
+        use_mode: bool = False,
+    ) -> dict[str, object]:
+        selected, reason = self._select_browser_engine(spec, inspect_mode=inspect_mode, use_mode=use_mode)
+        if selected == BrowserEngine.LIGHTPANDA:
+            try:
+                result = self._run_lightpanda_fetch(job_id, spec)
+            except Exception as exc:
+                if spec.engine == BrowserEngine.LIGHTPANDA:
+                    raise
+                fallback_error = f"{type(exc).__name__}: {exc}"[:1000]
+                result = self._run_playwright(
+                    job_id,
+                    spec,
+                    profile_epoch,
+                    inspect_mode=inspect_mode,
+                    use_mode=use_mode,
+                )
+                result["engine_route"] = {
+                    "requested": spec.engine.value,
+                    "selected": BrowserEngine.CHROME.value,
+                    "attempted": [BrowserEngine.LIGHTPANDA.value, BrowserEngine.CHROME.value],
+                    "reason": reason,
+                    "fallback": {
+                        "from": BrowserEngine.LIGHTPANDA.value,
+                        "to": BrowserEngine.CHROME.value,
+                        "error": fallback_error,
+                    },
+                }
+                return result
+            result["engine_route"] = {
+                "requested": spec.engine.value,
+                "selected": BrowserEngine.LIGHTPANDA.value,
+                "attempted": [BrowserEngine.LIGHTPANDA.value],
+                "reason": reason,
+                "fallback": None,
+            }
+            return result
+
+        result = self._run_playwright(
+            job_id,
+            spec,
+            profile_epoch,
+            inspect_mode=inspect_mode,
+            use_mode=use_mode,
+        )
+        result["engine_route"] = {
+            "requested": spec.engine.value,
+            "selected": BrowserEngine.CHROME.value,
+            "attempted": [BrowserEngine.CHROME.value],
+            "reason": reason,
+            "fallback": None,
+        }
+        return result
+
+    def _select_browser_engine(
+        self,
+        spec: JobSpec,
+        *,
+        inspect_mode: bool,
+        use_mode: bool,
+    ) -> tuple[BrowserEngine, str]:
+        if spec.engine == BrowserEngine.CHROME:
+            return BrowserEngine.CHROME, "explicit_chrome"
+
+        ineligible = self._lightpanda_ineligible_reason(spec, inspect_mode=inspect_mode, use_mode=use_mode)
+        if spec.engine == BrowserEngine.LIGHTPANDA:
+            if ineligible:
+                raise CapabilityError(f"Lightpanda is not eligible for this job: {ineligible}")
+            if self._lightpanda_binary() is None:
+                raise CapabilityError("Lightpanda was explicitly requested but no binary is installed")
+            return BrowserEngine.LIGHTPANDA, "explicit_lightpanda"
+
+        if ineligible:
+            return BrowserEngine.CHROME, ineligible
+        if self._lightpanda_binary() is None:
+            return BrowserEngine.CHROME, "lightpanda_unavailable"
+        return BrowserEngine.LIGHTPANDA, "auto_lightpanda_eligible"
+
+    @staticmethod
+    def _lightpanda_ineligible_reason(
+        spec: JobSpec,
+        *,
+        inspect_mode: bool,
+        use_mode: bool,
+    ) -> str | None:
+        if inspect_mode or spec.task_type == TaskType.INSPECT:
+            return "c2_requires_chrome_diagnostics"
+        if spec.profile_mode != ProfileMode.EPHEMERAL:
+            return "persistent_profile_requires_chrome"
+        if use_mode or spec.task_type == TaskType.USE:
+            return "c3_requires_chrome_v1"
+        if spec.task_type != TaskType.AUTOMATE:
+            return "task_not_lightpanda_routable"
+        return None
+
+    @staticmethod
+    def _lightpanda_binary() -> Path | None:
+        configured = os.environ.get("BROWSER_PLANE_LIGHTPANDA")
+        candidates = [
+            configured,
+            shutil.which("lightpanda"),
+            "/opt/homebrew/bin/lightpanda",
+            "/usr/local/bin/lightpanda",
+        ]
+        for raw in candidates:
+            if not raw:
+                continue
+            path = Path(raw).expanduser()
+            if path.is_file() and os.access(path, os.X_OK):
+                return path
+        return None
+
+    def _run_lightpanda_fetch(self, job_id: str, spec: JobSpec) -> dict[str, object]:
+        lightpanda = self._lightpanda_binary()
+        if lightpanda is None:
+            raise CapabilityError("Lightpanda binary is not installed")
+        if spec.profile_mode != ProfileMode.EPHEMERAL:
+            raise CapabilityError("Lightpanda v1 fast path supports ephemeral C1 only")
+
+        env = os.environ.copy()
+        env["LIGHTPANDA_DISABLE_TELEMETRY"] = "true"
+        env["LIGHTPANDA_DISABLE_CORE_DUMP"] = "1"
+        deadline_ms = max(1_000, spec.max_run_sec * 1_000)
+        command = [
+            str(lightpanda),
+            "fetch",
+            "--json",
+            "--dump",
+            "html",
+            "--dump-max-bytes",
+            "1000000",
+            "--wait-until",
+            "domcontentloaded",
+            "--terminate-ms",
+            str(deadline_ms),
+            "--http-timeout",
+            str(deadline_ms),
+            "--log-level",
+            "error",
+            spec.url,
+        ]
+        started = time.monotonic()
+        proc = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+            env=env,
+        )
+        browser_process_id: str | None = None
+        control_epoch: int | None = None
+        heartbeat_stop = threading.Event()
+        heartbeat_thread: threading.Thread | None = None
+        browser_session_id = str(uuid.uuid4())
+        try:
+            browser_process_id = self.processes.register(
+                pid=proc.pid,
+                job_id=job_id,
+                runtime_kind="C1_LIGHTPANDA",
+                profile_id=None,
+                user_data_dir=None,
+            )
+            control_epoch = self.leases.acquire_control(
+                browser_session_id,
+                job_id,
+                "LIGHTPANDA_FETCH",
+            )
+            if control_epoch is None:
+                raise RuntimeError("control lease unavailable")
+
+            def heartbeat() -> None:
+                while not heartbeat_stop.wait(1.0):
+                    if control_epoch is not None:
+                        self.leases.heartbeat_control(browser_session_id, job_id, control_epoch)
+                    if browser_process_id is not None:
+                        self.processes.mark_seen(browser_process_id)
+                    current = self.jobs.get(job_id)
+                    if current and current["state"] == JobState.CANCEL_REQUESTED.value:
+                        if browser_process_id is not None:
+                            self.processes.terminate_owned(browser_process_id, grace_sec=1.0)
+                        return
+
+            heartbeat_thread = threading.Thread(
+                target=heartbeat,
+                name=f"lightpanda-heartbeat-{job_id}",
+                daemon=True,
+            )
+            heartbeat_thread.start()
+            try:
+                stdout, stderr = proc.communicate(timeout=spec.max_run_sec + 5)
+            except subprocess.TimeoutExpired as exc:
+                if browser_process_id is not None:
+                    self.processes.terminate_owned(browser_process_id, grace_sec=1.0)
+                proc.communicate(timeout=3)
+                raise TimeoutError("Lightpanda fetch exceeded Browser Plane execution deadline") from exc
+
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            try:
+                payload = json.loads(stdout)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    f"Lightpanda returned invalid JSON: {stdout[:500]!r}; stderr={stderr[:500]!r}"
+                ) from exc
+            if not isinstance(payload, dict):
+                raise RuntimeError("Lightpanda returned a non-object JSON payload")
+            if proc.returncode != 0 or payload.get("error"):
+                raise RuntimeError(
+                    f"Lightpanda fetch failed rc={proc.returncode} error={payload.get('error')!r} stderr={stderr[:500]!r}"
+                )
+
+            status = int(payload.get("http_status") or 0)
+            content = str(payload.get("content") or "")
+            if status in {401, 403, 429} or status >= 500:
+                raise RuntimeError(f"Lightpanda HTTP {status} is eligible for Chrome fallback")
+            if status and not content:
+                raise RuntimeError("Lightpanda returned an empty rendered DOM")
+
+            parser = _RenderedHTMLTextParser()
+            parser.feed(content)
+            headers = payload.get("headers") if isinstance(payload.get("headers"), list) else []
+            content_type = next(
+                (
+                    str(item.get("value"))
+                    for item in headers
+                    if isinstance(item, dict) and str(item.get("name", "")).lower() == "content-type"
+                ),
+                None,
+            )
+            return {
+                "engine": "c1-lightpanda",
+                "browser_engine": BrowserEngine.LIGHTPANDA.value,
+                "url": str(payload.get("url") or spec.url),
+                "title": parser.title,
+                "status": status or None,
+                "elapsed_ms": elapsed_ms,
+                "content_type": content_type,
+                "body_bytes": len(content.encode("utf-8")),
+                "text_excerpt": parser.body_text[:4000],
+                "browser_process_id": browser_process_id,
+                "browser_session_id": browser_session_id,
+            }
+        finally:
+            heartbeat_stop.set()
+            if heartbeat_thread is not None:
+                heartbeat_thread.join(timeout=1.0)
+            if control_epoch is not None:
+                self.leases.release_control(browser_session_id, job_id, control_epoch)
+            if browser_process_id is not None:
+                if proc.poll() is None:
+                    self.processes.terminate_owned(browser_process_id)
+                else:
+                    self.processes.mark_closed(browser_process_id)
+            elif proc.poll() is None:
+                proc.terminate()
+
     def _run_playwright(
         self,
         job_id: str,
@@ -284,7 +595,12 @@ class BrowserExecutor:
             user_data_dir = Path(tempfile.mkdtemp(prefix=f"job-{job_id}-", dir=self.paths.run_dir))
             remove_dir = True
 
-        chrome = Path(os.environ.get("BROWSER_PLANE_CHROME", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"))
+        chrome = Path(
+            os.environ.get(
+                "BROWSER_PLANE_CHROME",
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            )
+        )
         if not chrome.exists():
             raise CapabilityError(f"Chrome not found: {chrome}")
 
@@ -293,7 +609,6 @@ class BrowserExecutor:
         # discovery artifact before launching a new owned Chrome. Never delete
         # SingletonLock/SingletonCookie as a recovery shortcut.
         self._clear_stale_cdp_discovery(user_data_dir)
-
         proc = subprocess.Popen(
             [
                 str(chrome),
@@ -314,10 +629,11 @@ class BrowserExecutor:
         heartbeat_thread: threading.Thread | None = None
         browser_session_id = str(uuid.uuid4())
         try:
+            capability_kind = "C3" if use_mode else ("C2" if inspect_mode else "C1")
             browser_process_id = self.processes.register(
                 pid=proc.pid,
                 job_id=job_id,
-                runtime_kind="C3" if use_mode else ("C2" if inspect_mode else "C1"),
+                runtime_kind=f"{capability_kind}_CHROME",
                 profile_id=spec.profile if persistent else None,
                 user_data_dir=str(user_data_dir),
             )
@@ -350,7 +666,9 @@ class BrowserExecutor:
             endpoint = self._wait_for_cdp(user_data_dir, proc, timeout_sec=10)
             with sync_playwright() as p:
                 browser = p.chromium.connect_over_cdp(endpoint)
-                context = browser.contexts[0] if browser.contexts else browser.new_context(viewport={"width": 1440, "height": 900})
+                context = browser.contexts[0] if browser.contexts else browser.new_context(
+                    viewport={"width": 1440, "height": 900}
+                )
                 page = context.pages[0] if context.pages else context.new_page()
                 page.set_viewport_size({"width": 1440, "height": 900})
 
@@ -390,8 +708,12 @@ class BrowserExecutor:
                     if "status" in action_result:
                         status = action_result["status"]
                         break
+                engine_name = "c3-browser-use" if use_mode else (
+                    "c2-readonly-inspect" if inspect_mode else "c1-playwright"
+                )
                 result: dict[str, object] = {
-                    "engine": "c3-browser-use" if use_mode else ("c2-readonly-inspect" if inspect_mode else "c1-playwright"),
+                    "engine": engine_name,
+                    "browser_engine": BrowserEngine.CHROME.value,
                     "url": page.url,
                     "title": page.title(),
                     "status": status,

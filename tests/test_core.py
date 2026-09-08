@@ -21,7 +21,7 @@ from browser_plane.db import JobStore, RuntimeDB
 from browser_plane.doctor import Doctor
 from browser_plane.executor import BrowserExecutor, CapabilityError
 from browser_plane.leases import LeaseManager
-from browser_plane.models import Egress, JobSpec, JobState, ProfileMode, TaskType
+from browser_plane.models import BrowserEngine, Egress, JobSpec, JobState, ProfileMode, TaskType
 from browser_plane.processes import BrowserProcessRegistry
 from browser_plane.worker import Worker
 
@@ -63,6 +63,17 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertTrue(manifest["capabilities"]["c3_semantic_targeting"])
         self.assertTrue(manifest["capabilities"]["c3_aria_snapshot"])
         self.assertFalse(manifest["capabilities"]["c3_browser_agent"])
+        self.assertTrue(manifest["capabilities"]["lightpanda_engine"])
+        self.assertTrue(manifest["capabilities"]["engine_auto_routing"])
+        self.assertEqual(manifest["engine_routing"]["policy"], "auto_v1")
+        self.assertFalse(manifest["engine_routing"]["caller_selects_engine"])
+        self.assertEqual(
+            manifest["engine_routing"]["rules"]["c1_ephemeral_js_dom"],
+            "lightpanda_then_chrome_fallback",
+        )
+        self.assertEqual(manifest["engine_routing"]["rules"]["c2_inspect"], "chrome")
+        self.assertEqual(manifest["engine_routing"]["rules"]["c3_browser_use"], "chrome")
+        self.assertEqual(manifest["engine_routing"]["fallback"]["scope"], "c1_ephemeral_only")
         self.assertTrue(manifest["capabilities"]["remote_invocation"])
         self.assertTrue(manifest["security"]["tls_verification_required"])
         self.assertTrue(manifest["security"]["cdp_loopback_only"])
@@ -424,6 +435,79 @@ class ExecutorTests(unittest.TestCase):
                 {"selector": "#search", "role": "button"},
                 required=True,
             )
+
+    def test_engine_router_prefers_lightpanda_for_ephemeral_c1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            spec = JobSpec(task_type=TaskType.AUTOMATE, url="https://example.com")
+            with patch.object(BrowserExecutor, "_lightpanda_binary", return_value=Path("/tmp/lightpanda")):
+                engine, reason = executor._select_browser_engine(spec, inspect_mode=False, use_mode=False)
+            self.assertEqual(engine, BrowserEngine.LIGHTPANDA)
+            self.assertEqual(reason, "auto_lightpanda_eligible")
+
+    def test_engine_router_keeps_chrome_for_persistent_c2_and_interactive_c3(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            persistent = JobSpec(
+                task_type=TaskType.AUTOMATE,
+                url="https://example.com",
+                profile_mode=ProfileMode.EXCLUSIVE_PERSISTENT,
+            )
+            c2 = JobSpec(task_type=TaskType.INSPECT, url="https://example.com")
+            c3 = JobSpec(
+                task_type=TaskType.USE,
+                url="https://example.com",
+                actions=({"action": "click", "role": "link", "name": "More"},),
+            )
+            with patch.object(BrowserExecutor, "_lightpanda_binary", return_value=Path("/tmp/lightpanda")):
+                self.assertEqual(
+                    executor._select_browser_engine(persistent, inspect_mode=False, use_mode=False),
+                    (BrowserEngine.CHROME, "persistent_profile_requires_chrome"),
+                )
+                self.assertEqual(
+                    executor._select_browser_engine(c2, inspect_mode=True, use_mode=False),
+                    (BrowserEngine.CHROME, "c2_requires_chrome_diagnostics"),
+                )
+                self.assertEqual(
+                    executor._select_browser_engine(c3, inspect_mode=False, use_mode=True),
+                    (BrowserEngine.CHROME, "c3_requires_chrome_v1"),
+                )
+
+    def test_engine_router_falls_back_from_lightpanda_to_chrome_for_c1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            spec = JobSpec(task_type=TaskType.AUTOMATE, url="https://example.com")
+            with (
+                patch.object(BrowserExecutor, "_lightpanda_binary", return_value=Path("/tmp/lightpanda")),
+                patch.object(BrowserExecutor, "_run_lightpanda_fetch", side_effect=RuntimeError("lp native fail")),
+                patch.object(
+                    BrowserExecutor,
+                    "_run_playwright",
+                    return_value={"engine": "c1-playwright", "browser_engine": "chrome"},
+                ) as run_playwright,
+            ):
+                result = executor._run_browser("job-route", spec, None)
+            run_playwright.assert_called_once()
+            self.assertEqual(result["engine_route"]["selected"], "chrome")
+            self.assertEqual(result["engine_route"]["attempted"], ["lightpanda", "chrome"])
+            self.assertIn("lp native fail", result["engine_route"]["fallback"]["error"])
+
+    def test_explicit_lightpanda_rejects_c3_in_v1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            spec = JobSpec(
+                task_type=TaskType.USE,
+                url="https://example.com",
+                engine=BrowserEngine.LIGHTPANDA,
+                actions=({"action": "snapshot"},),
+            )
+            with patch.object(BrowserExecutor, "_lightpanda_binary", return_value=Path("/tmp/lightpanda")):
+                with self.assertRaisesRegex(CapabilityError, "c3_requires_chrome_v1"):
+                    executor._select_browser_engine(spec, inspect_mode=False, use_mode=True)
 
     def test_c2_readonly_cdp_allowlist_blocks_mutation(self) -> None:
         session = Mock()

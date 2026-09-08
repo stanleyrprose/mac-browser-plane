@@ -24,6 +24,8 @@ C3 Browser Use         -> browser_use
 
 C0–C3 are COMPLETE. C3 Semantic Targeting is COMPLETE.
 
+Internal engine routing is transparent to callers: C0 uses system `curl`; ephemeral C1 prefers Lightpanda when installed and safely falls back to Chrome; persistent-profile C1, all C2 diagnostics, and all C3 Browser Use remain Chrome in routing v1. Do not bypass `mac-browser-plane` to call Lightpanda MCP/Agent directly. Machine-readable routing truth is in `src/browser_plane/capabilities.json`; rationale is in `docs/LIGHTPANDA_ENGINE_ROUTING.md`.
+
 `browser_use` supports deterministic `navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, and `download`, with CSS or semantic targeting (`role`/name, `label`, `text_target`).
 
 The calling agent owns reasoning/planning. Browser Plane owns execution. Do not infer that an autonomous embedded Browser Agent exists; that remains deferred.

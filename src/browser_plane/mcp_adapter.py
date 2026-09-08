@@ -20,8 +20,8 @@ mcp = MCPServer(
     instructions=(
         "Local stdio-only adapter over the existing Mac Browser Plane runtime. "
         "Use browser_fetch for strict-TLS HTTP acquisition, browser_render for deterministic "
-        "Chrome rendering, browser_inspect for read-only diagnostics, and browser_use for "
-        "multi-step Playwright interaction. Arbitrary JavaScript, raw CDP, and remote invocation "
+        "engine-routed JS/DOM rendering, browser_inspect for Chrome read-only diagnostics, and browser_use for "
+        "multi-step Playwright interaction with internal engine routing. Arbitrary JavaScript, raw CDP, and remote invocation "
         "are not available."
     ),
 )
@@ -311,7 +311,7 @@ def browser_render(
     max_run_sec: int = 120,
     client_timeout_sec: int = 180,
 ) -> dict[str, Any]:
-    """Render a public HTTP(S) URL with C1 runtime-owned Chrome; this does not click or type."""
+    """Render JS/DOM for a public HTTP(S) URL through the internal C1 engine router; this does not click or type."""
     return _submit_and_wait(
         task_type=TaskType.AUTOMATE,
         url=url,
@@ -334,7 +334,7 @@ def browser_use(
     max_run_sec: int = 180,
     client_timeout_sec: int = 240,
 ) -> dict[str, Any]:
-    """Run a deterministic multi-step C3 Browser Use workflow in runtime-owned Chrome."""
+    """Run deterministic C3 Browser Use in runtime-owned Chrome; Lightpanda v1 is limited to ephemeral C1 rendering."""
     return _submit_and_wait(
         task_type=TaskType.USE,
         url=url,
