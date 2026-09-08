@@ -13,6 +13,7 @@ from browser_plane.provider_agent import (
     CAPABILITY_TOOL_MAP,
     ProviderAgentError,
     SshProviderTransport,
+    _poll_delay,
     canonical_json,
     mcp_arguments,
     package_success,
@@ -130,6 +131,16 @@ def job_payload(result: dict, job_id="browser-job-1") -> dict:
             "result": result,
         },
     }
+
+
+class ProviderAgentPollingTests(unittest.TestCase):
+    def test_idle_poll_uses_configured_interval(self) -> None:
+        self.assertEqual(_poll_delay({"status": "NO_WORK"}, 10.0), 10.0)
+        self.assertEqual(_poll_delay({"status": "NO_WORK"}, 0.1), 1.0)
+
+    def test_completed_work_drains_next_request_without_idle_sleep(self) -> None:
+        self.assertEqual(_poll_delay({"status": "COMPLETED"}, 10.0), 0.0)
+        self.assertEqual(_poll_delay({"status": "FAILED"}, 10.0), 0.0)
 
 
 class ProviderAgentValidationTests(unittest.TestCase):
