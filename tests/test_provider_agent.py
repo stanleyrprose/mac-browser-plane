@@ -2,47 +2,57 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 import unittest
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
+from pathlib import Path
+from unittest.mock import patch
 
-from browser_plane.provider_agent import ProviderAgentError, build_completion, run_once, validate_claim
+from browser_plane.provider_agent import (
+    CAPABILITY_TOOL_MAP,
+    ProviderAgentError,
+    SshProviderTransport,
+    canonical_json,
+    mcp_arguments,
+    package_success,
+    request_sha256,
+    run_once,
+    validate_request,
+)
 
-NOW = datetime(2026, 9, 8, 6, 0, tzinfo=UTC)
 URL = "https://www.industrymsme.gov.mm/announcements"
-
-
-def canonical(value: object) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+NOW = datetime(2026, 9, 8, 6, 0, tzinfo=UTC)
 
 
 def contract() -> dict:
-    caps = ["C0_FETCH", "C1_RENDER", "C2_INSPECT", "C3_BROWSER_USE"]
     return {
         "schema_version": 1,
         "provider_id": "mac-mm-01",
+        "transport": "pull_ssh_v1",
         "source_policies": {
             "S38": {
                 "enabled": True,
                 "source_policy_version": 1,
-                "allowed_capabilities": caps,
-                "targets": {"LISTING": {"capabilities": caps, "exact_urls": [URL]}},
+                "allowed_capabilities": list(CAPABILITY_TOOL_MAP),
+                "targets": {
+                    "LISTING": {
+                        "capabilities": list(CAPABILITY_TOOL_MAP),
+                        "exact_urls": [URL],
+                        "max_bytes": 1_000_000,
+                        "max_run_seconds": 180,
+                    }
+                },
             }
         },
     }
 
 
-def claim(capability: str = "C0_FETCH", *, interaction_plan=None) -> dict:
-    request_id = str(uuid.uuid4())
-    tool = {
-        "C0_FETCH": "browser_fetch",
-        "C1_RENDER": "browser_render",
-        "C2_INSPECT": "browser_inspect",
-        "C3_BROWSER_USE": "browser_use",
-    }[capability]
-    request = {
+def request(capability: str, interaction_plan=None) -> dict:
+    provider_request_id = str(uuid.uuid4())
+    value = {
         "contract_version": 1,
-        "provider_request_id": request_id,
+        "provider_request_id": provider_request_id,
         "provider_id": "mac-mm-01",
         "signalforge_job_id": str(uuid.uuid4()),
         "acquisition_request_id": str(uuid.uuid4()),
@@ -50,119 +60,255 @@ def claim(capability: str = "C0_FETCH", *, interaction_plan=None) -> dict:
         "source_id": "S38",
         "source_policy_version": 1,
         "capability": capability,
-        "mcp_tool": tool,
+        "mcp_tool": CAPABILITY_TOOL_MAP[capability],
         "target_role": "LISTING",
         "requested_url": URL,
         "max_bytes": 1_000_000,
-        "max_run_seconds": 45,
-        "requested_at": NOW.isoformat().replace("+00:00", "Z"),
-        "expires_at": (NOW + timedelta(seconds=120)).isoformat().replace("+00:00", "Z"),
-        "idempotency_key": f"sf-provider:{request_id}",
+        "max_run_seconds": 60,
+        "requested_at": "2026-09-08T06:00:00Z",
+        "expires_at": "2026-09-08T06:02:00Z",
+        "idempotency_key": f"sf-provider:{provider_request_id}",
         "interaction_plan": interaction_plan,
     }
-    request["request_sha256"] = hashlib.sha256(canonical(request)).hexdigest()
+    value["request_sha256"] = request_sha256(value)
+    return value
+
+
+def claim(req: dict) -> dict:
     return {
         "status": "CLAIMED",
         "provider_id": "mac-mm-01",
-        "provider_request_id": request_id,
+        "provider_request_id": req["provider_request_id"],
         "provider_attempt_id": str(uuid.uuid4()),
-        "claim_token": "x",
-        "claim_expires_at": (NOW + timedelta(seconds=60)).isoformat().replace("+00:00", "Z"),
-        "request": request,
+        "claim_token": "claim-secret",
+        "claim_expires_at": "2026-09-08T06:01:00Z",
+        "request": req,
     }
 
 
-class FakeDispatcher:
-    def __init__(self, claimed: dict) -> None:
-        self.claimed = claimed
-        self.calls: list[tuple[str, dict | None]] = []
+class FakeTransport:
+    def __init__(self, claim_value: dict):
+        self.claim_value = claim_value
+        self.submitted: list[bytes] = []
+        self.failed: list[dict] = []
 
-    def call(self, command: str, payload=None):
-        self.calls.append((command, payload))
-        if command == "provider-claim-v1":
-            return self.claimed
-        if command == "provider-complete-v1":
-            return {"status": "ACCEPTED"}
-        if command == "provider-fail-v1":
-            return {"status": "FAILED_ACCEPTED"}
-        raise AssertionError(command)
+    def claim(self):
+        return self.claim_value
+
+    def submit(self, payload: bytes):
+        self.submitted.append(payload)
+        return {"status": "ACCEPTED"}
+
+    def fail(self, payload: dict):
+        self.failed.append(payload)
+        return {"status": "FAILED_ACCEPTED"}
 
 
-class ProviderAgentTests(unittest.TestCase):
-    def test_maps_c0_c1_c2_to_local_mcp(self) -> None:
-        for capability, expected_tool in (
-            ("C0_FETCH", "browser_fetch"),
-            ("C1_RENDER", "browser_render"),
-            ("C2_INSPECT", "browser_inspect"),
-        ):
-            validated = validate_claim(claim(capability), contract(), now=NOW)
-            self.assertEqual(validated["tool"], expected_tool)
-            self.assertEqual(validated["arguments"]["url"], URL)
+class FakeInvoker:
+    def __init__(self, payload: dict):
+        self.payload = payload
+        self.calls: list[tuple[str, dict]] = []
 
-    def test_maps_bounded_c3_plan_to_browser_use(self) -> None:
+    def call(self, tool: str, arguments: dict):
+        self.calls.append((tool, arguments))
+        return self.payload
+
+
+def job_payload(result: dict, job_id="browser-job-1") -> dict:
+    return {
+        "ok": True,
+        "tool": "x",
+        "is_error": False,
+        "structured_content": {
+            "job_id": job_id,
+            "state": "SUCCEEDED",
+            "created_at": "x",
+            "started_at": "x",
+            "finished_at": "x",
+            "failure_class": None,
+            "partial_effect_possible": False,
+            "result": result,
+        },
+    }
+
+
+class ProviderAgentValidationTests(unittest.TestCase):
+    def test_c0_c1_c2_validate_and_map_to_actual_mcp_tools(self):
+        for capability in ("C0_FETCH", "C1_RENDER", "C2_INSPECT"):
+            req = request(capability)
+            self.assertIs(validate_request(req, contract()), req)
+            args = mcp_arguments(req)
+            self.assertEqual(args["url"], URL)
+            self.assertEqual(req["mcp_tool"], CAPABILITY_TOOL_MAP[capability])
+
+    def test_c3_plan_matches_pic_subset_and_real_mcp_action_names(self):
         plan = {
             "side_effect_class": "READ_ONLY_NAVIGATION",
             "retry_safe": False,
             "steps": [
                 {"action": "snapshot"},
-                {"action": "click", "selector": "a.next"},
-                {"action": "wait", "selector": "body"},
+                {"action": "click", "text_target": "Next"},
+                {"action": "press", "key": "Escape"},
                 {"action": "screenshot"},
             ],
         }
-        validated = validate_claim(claim("C3_BROWSER_USE", interaction_plan=plan), contract(), now=NOW)
-        self.assertEqual(validated["tool"], "browser_use")
-        self.assertEqual(validated["arguments"]["actions"], plan["steps"])
-        self.assertEqual(validated["arguments"]["profile"], "public-research")
-        self.assertEqual(validated["arguments"]["profile_mode"], "ephemeral")
+        req = request("C3_BROWSER_USE", plan)
+        validate_request(req, contract())
+        self.assertEqual(mcp_arguments(req)["actions"], plan["steps"])
 
-    def test_rejects_tampering_and_unsupported_scroll(self) -> None:
-        tampered = claim()
-        tampered["request"]["requested_url"] = "https://example.com/"
-        with self.assertRaisesRegex(ProviderAgentError, "SHA-256"):
-            validate_claim(tampered, contract(), now=NOW)
+    def test_c3_rejects_scroll_download_and_arbitrary_execution(self):
+        for step in (
+            {"action": "scroll"},
+            {"action": "download", "selector": "a"},
+            {"action": "click", "selector": "a", "javascript": "x"},
+        ):
+            req = request("C3_BROWSER_USE", {"side_effect_class": "READ_ONLY_NAVIGATION", "retry_safe": False, "steps": [step]})
+            with self.assertRaises(ProviderAgentError):
+                validate_request(req, contract())
 
-        c3 = claim(
-            "C3_BROWSER_USE",
-            interaction_plan={
-                "side_effect_class": "READ_ONLY_NAVIGATION",
-                "retry_safe": True,
-                "steps": [{"action": "scroll"}],
-            },
-        )
-        with self.assertRaisesRegex(ProviderAgentError, "not supported"):
-            validate_claim(c3, contract(), now=NOW)
+    def test_rejects_tamper_wrong_host_capability_and_c0_oversize(self):
+        req = request("C0_FETCH")
+        req["requested_url"] = "https://example.com/"
+        req["request_sha256"] = request_sha256(req)
+        with self.assertRaisesRegex(ProviderAgentError, "approved exact target"):
+            validate_request(req, contract())
 
-    def test_completion_hashes_exact_mcp_result(self) -> None:
-        current = claim()
-        result = {
-            "ok": True,
-            "tool": "browser_fetch",
-            "is_error": False,
-            "structured_content": {"job_id": "browser-job-1", "state": "SUCCEEDED", "result": {"status": 200}},
-        }
-        payload = build_completion(current, result)
-        self.assertEqual(payload["browser_job_id"], "browser-job-1")
-        self.assertEqual(payload["result_sha256"], hashlib.sha256(canonical(result)).hexdigest())
+        req = request("C1_RENDER")
+        req["mcp_tool"] = "browser_fetch"
+        req["request_sha256"] = request_sha256(req)
+        with self.assertRaisesRegex(ProviderAgentError, "capability/tool"):
+            validate_request(req, contract())
 
-    def test_run_once_claims_executes_and_completes(self) -> None:
-        current = claim("C2_INSPECT")
-        dispatcher = FakeDispatcher(current)
-        observed: list[tuple[str, dict]] = []
+        req = request("C0_FETCH")
+        req["max_bytes"] = 1_000_001
+        req["request_sha256"] = request_sha256(req)
+        local = contract()
+        local["source_policies"]["S38"]["targets"]["LISTING"]["max_bytes"] = 2_000_000
+        with self.assertRaisesRegex(ProviderAgentError, "current Browser Plane C0"):
+            validate_request(req, local)
 
-        def caller(tool: str, arguments: dict):
-            observed.append((tool, arguments))
-            return {
-                "ok": True,
-                "tool": tool,
-                "is_error": False,
-                "structured_content": {"job_id": "browser-job-2", "state": "SUCCEEDED", "result": {"status": 200}},
+
+class ProviderAgentPackagingTests(unittest.TestCase):
+    def test_c0_packages_raw_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = b"<html>raw</html>"
+            path = Path(tmp) / "response.html"
+            path.write_bytes(raw)
+            req = request("C0_FETCH")
+            c = claim(req)
+            result = {
+                "engine": "c0-fetch",
+                "url": URL,
+                "status": 200,
+                "content_type": "text/html; charset=utf-8",
+                "body_bytes": len(raw),
+                "artifact_path": str(path),
+                "sha256": hashlib.sha256(raw).hexdigest(),
             }
+            wire = package_success(c, job_payload(result))
+            line, artifact = wire.split(b"\n", 1)
+            manifest = json.loads(line)
+            self.assertEqual(artifact, raw)
+            self.assertEqual(manifest["media_type"], "text/html")
+            self.assertEqual(manifest["artifact_sha256"], hashlib.sha256(raw).hexdigest())
 
-        output = run_once(contract(), dispatcher, mcp_caller=caller, now=NOW)
-        self.assertEqual(output["status"], "COMPLETED")
-        self.assertEqual(observed[0][0], "browser_inspect")
-        self.assertEqual([item[0] for item in dispatcher.calls], ["provider-claim-v1", "provider-complete-v1"])
+    def test_c1_c2_c3_package_canonical_json_evidence(self):
+        for capability, engine in (
+            ("C1_RENDER", "c1-playwright"),
+            ("C2_INSPECT", "c2-readonly-inspect"),
+            ("C3_BROWSER_USE", "c3-browser-use"),
+        ):
+            plan = None
+            if capability == "C3_BROWSER_USE":
+                plan = {"side_effect_class": "READ_ONLY_NAVIGATION", "retry_safe": False, "steps": [{"action": "snapshot"}]}
+            req = request(capability, plan)
+            c = claim(req)
+            result = {"engine": engine, "url": URL, "status": 200, "title": "x", "text_excerpt": "hello"}
+            wire = package_success(c, job_payload(result))
+            line, artifact = wire.split(b"\n", 1)
+            manifest = json.loads(line)
+            self.assertEqual(manifest["media_type"], "application/json")
+            parsed = json.loads(artifact)
+            self.assertEqual(parsed["result"]["engine"], engine)
+
+
+class ProviderAgentRunTests(unittest.TestCase):
+    def test_no_work_does_not_invoke_mcp(self):
+        transport = FakeTransport({"status": "NO_WORK"})
+        invoker = FakeInvoker({})
+        result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
+        self.assertEqual(result["status"], "NO_WORK")
+        self.assertEqual(invoker.calls, [])
+
+    def test_all_capabilities_route_to_expected_tool(self):
+        for capability in CAPABILITY_TOOL_MAP:
+            plan = None
+            if capability == "C3_BROWSER_USE":
+                plan = {"side_effect_class": "READ_ONLY_NAVIGATION", "retry_safe": False, "steps": [{"action": "snapshot"}]}
+            req = request(capability, plan)
+            transport = FakeTransport(claim(req))
+            if capability == "C0_FETCH":
+                with tempfile.TemporaryDirectory() as tmp:
+                    raw = b"x"
+                    p = Path(tmp) / "x.bin"; p.write_bytes(raw)
+                    payload = job_payload({"engine": "c0-fetch", "url": URL, "status": 200, "content_type": "text/html", "body_bytes": 1, "artifact_path": str(p), "sha256": hashlib.sha256(raw).hexdigest()})
+                    invoker = FakeInvoker(payload)
+                    result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
+            else:
+                invoker = FakeInvoker(job_payload({"engine": "x", "url": URL, "status": 200}))
+                result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
+            self.assertEqual(result["status"], "ACCEPTED")
+            self.assertEqual(invoker.calls[0][0], CAPABILITY_TOOL_MAP[capability])
+            self.assertEqual(len(transport.submitted), 1)
+
+    def test_invalid_claim_fails_before_mcp_and_reports_contract_failure(self):
+        req = request("C0_FETCH")
+        req["requested_url"] = "https://example.com/"
+        req["request_sha256"] = request_sha256(req)
+        transport = FakeTransport(claim(req))
+        invoker = FakeInvoker({})
+        with self.assertRaises(ProviderAgentError):
+            run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
+        self.assertEqual(invoker.calls, [])
+        self.assertEqual(transport.failed[0]["failure_class"], "PROVIDER_CONTRACT_MISMATCH")
+
+    def test_expired_claim_fails_before_mcp(self):
+        req = request("C0_FETCH")
+        transport = FakeTransport(claim(req))
+        invoker = FakeInvoker({})
+        with self.assertRaisesRegex(ProviderAgentError, "expired"):
+            run_once(transport=transport, invoker=invoker, contract=contract(), now=datetime(2026, 9, 8, 6, 3, tzinfo=UTC))
+        self.assertEqual(invoker.calls, [])
+        self.assertEqual(transport.failed[0]["failure_class"], "PROVIDER_CONTRACT_MISMATCH")
+
+    def test_mcp_failure_reports_provider_not_ready(self):
+        req = request("C1_RENDER")
+        transport = FakeTransport(claim(req))
+
+        class BrokenInvoker:
+            def call(self, tool, arguments):
+                raise RuntimeError("mcp unavailable")
+
+        with self.assertRaises(RuntimeError):
+            run_once(transport=transport, invoker=BrokenInvoker(), contract=contract(), now=NOW)
+        self.assertEqual(transport.failed[0]["failure_class"], "PROVIDER_NOT_READY")
+
+
+class SshProviderTransportTests(unittest.TestCase):
+    def test_argv_is_closed_and_never_invokes_shell(self):
+        transport = SshProviderTransport("sf-provider-bangkok", "/tmp/key")
+        argv = transport._argv("provider-claim-v1")
+        self.assertEqual(argv[0], "/usr/bin/ssh")
+        self.assertIn("BatchMode=yes", argv)
+        self.assertIn("ClearAllForwardings=yes", argv)
+        self.assertEqual(argv[-2:], ["sf-provider-bangkok", "provider-claim-v1"])
+        self.assertNotIn("sh", argv)
+        self.assertNotIn("bash", argv)
+
+        completed = type("Done", (), {"returncode": 0, "stdout": b'{"status":"NO_WORK"}', "stderr": b""})()
+        with patch("browser_plane.provider_agent.subprocess.run", return_value=completed) as run:
+            self.assertEqual(transport.claim()["status"], "NO_WORK")
+            self.assertFalse(run.call_args.kwargs.get("shell", False))
 
 
 if __name__ == "__main__":
