@@ -63,6 +63,17 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertTrue(manifest["capabilities"]["c3_semantic_targeting"])
         self.assertTrue(manifest["capabilities"]["c3_aria_snapshot"])
         self.assertFalse(manifest["capabilities"]["c3_browser_agent"])
+        self.assertTrue(manifest["capabilities"]["lightpanda_engine"])
+        self.assertTrue(manifest["capabilities"]["engine_auto_routing"])
+        self.assertEqual(manifest["engine_routing"]["policy"], "auto_v1")
+        self.assertFalse(manifest["engine_routing"]["caller_selects_engine"])
+        self.assertEqual(
+            manifest["engine_routing"]["rules"]["c1_ephemeral_js_dom"],
+            "lightpanda_then_chrome_fallback",
+        )
+        self.assertEqual(manifest["engine_routing"]["rules"]["c2_inspect"], "chrome")
+        self.assertEqual(manifest["engine_routing"]["rules"]["c3_browser_use"], "chrome")
+        self.assertEqual(manifest["engine_routing"]["fallback"]["scope"], "c1_ephemeral_only")
         self.assertTrue(manifest["capabilities"]["remote_invocation"])
         self.assertTrue(manifest["security"]["tls_verification_required"])
         self.assertTrue(manifest["security"]["cdp_loopback_only"])
