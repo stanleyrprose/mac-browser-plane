@@ -6,7 +6,9 @@ import hashlib
 import json
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import unquote, urlsplit
@@ -72,6 +74,38 @@ def _validate_url(target: dict[str, Any], url: str) -> None:
         raise ProviderAgentError("provider request query is not locally authorized")
     if parsed.fragment and target.get("allow_fragment") is not True:
         raise ProviderAgentError("provider request fragment is not locally authorized")
+
+
+def _parse_time(value: object, *, field: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise ProviderAgentError(f"{field} missing")
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ProviderAgentError(f"{field} invalid") from exc
+    if parsed.tzinfo is None:
+        raise ProviderAgentError(f"{field} must be timezone-aware")
+    return parsed.astimezone(UTC)
+
+
+def validate_claim(claim: dict[str, Any], contract: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
+    if claim.get("status") != "CLAIMED" or claim.get("provider_id") != PROVIDER_ID:
+        raise ProviderAgentError("invalid provider claim envelope")
+    request = claim.get("request")
+    if not isinstance(request, dict):
+        raise ProviderAgentError("provider claim request missing")
+    if claim.get("provider_request_id") != request.get("provider_request_id"):
+        raise ProviderAgentError("provider request correlation mismatch")
+    for field in ("provider_attempt_id", "claim_token"):
+        if not isinstance(claim.get(field), str) or not claim[field]:
+            raise ProviderAgentError(f"provider claim field missing: {field}")
+    observed = (now or datetime.now(UTC)).astimezone(UTC)
+    if _parse_time(request.get("expires_at"), field="request expires_at") <= observed:
+        raise ProviderAgentError("provider request expired")
+    if _parse_time(claim.get("claim_expires_at"), field="claim_expires_at") <= observed:
+        raise ProviderAgentError("provider claim expired")
+    return validate_request(request, contract)
 
 
 def validate_request(request: dict[str, Any], contract: dict[str, Any]) -> dict[str, Any]:
@@ -268,7 +302,7 @@ class LocalMcpInvoker:
         return asyncio.run(_call_tool(tool, arguments))
 
 
-def run_once(*, transport: ProviderTransport, invoker: McpInvoker, contract: dict[str, Any]) -> dict[str, Any]:
+def run_once(*, transport: ProviderTransport, invoker: McpInvoker, contract: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
     claim = transport.claim()
     if claim.get("status") == "NO_WORK":
         return claim
@@ -276,7 +310,7 @@ def run_once(*, transport: ProviderTransport, invoker: McpInvoker, contract: dic
         raise ProviderAgentError("claim response contract invalid")
     request = claim["request"]
     try:
-        validate_request(request, contract)
+        validate_claim(claim, contract, now=now)
         tool = str(request["mcp_tool"])
         payload = invoker.call(tool, mcp_arguments(request))
         wire = package_success(claim, payload)
@@ -310,21 +344,28 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", required=True, help="Restricted Bangkok SSH host/alias")
     parser.add_argument("--contract", type=Path, required=True, help="Local provider authorization projection")
     parser.add_argument("--identity-file", help="Dedicated provider SSH identity")
+    parser.add_argument("--interval-sec", type=float, default=10.0)
+    parser.add_argument("--once", action="store_true")
     return parser
 
 
 def main() -> None:
     args = _parser().parse_args()
+    transport = SshProviderTransport(args.host, args.identity_file)
+    invoker = LocalMcpInvoker()
+    contract = load_contract(args.contract)
     try:
-        result = run_once(
-            transport=SshProviderTransport(args.host, args.identity_file),
-            invoker=LocalMcpInvoker(),
-            contract=load_contract(args.contract),
-        )
+        while True:
+            result = run_once(transport=transport, invoker=invoker, contract=contract)
+            print(json.dumps({"ok": True, "result": result}, ensure_ascii=False, sort_keys=True), flush=True)
+            if args.once:
+                return
+            time.sleep(max(1.0, float(args.interval_sec)))
+    except KeyboardInterrupt:
+        return
     except Exception as exc:
-        print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, sort_keys=True))
+        print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, sort_keys=True), flush=True)
         raise SystemExit(1) from None
-    print(json.dumps({"ok": True, "result": result}, ensure_ascii=False, sort_keys=True))
 
 
 if __name__ == "__main__":

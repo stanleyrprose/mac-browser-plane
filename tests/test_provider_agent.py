@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,6 +22,7 @@ from browser_plane.provider_agent import (
 )
 
 URL = "https://www.industrymsme.gov.mm/announcements"
+NOW = datetime(2026, 9, 8, 6, 0, tzinfo=UTC)
 
 
 def contract() -> dict:
@@ -234,7 +236,7 @@ class ProviderAgentRunTests(unittest.TestCase):
     def test_no_work_does_not_invoke_mcp(self):
         transport = FakeTransport({"status": "NO_WORK"})
         invoker = FakeInvoker({})
-        result = run_once(transport=transport, invoker=invoker, contract=contract())
+        result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
         self.assertEqual(result["status"], "NO_WORK")
         self.assertEqual(invoker.calls, [])
 
@@ -251,10 +253,10 @@ class ProviderAgentRunTests(unittest.TestCase):
                     p = Path(tmp) / "x.bin"; p.write_bytes(raw)
                     payload = job_payload({"engine": "c0-fetch", "url": URL, "status": 200, "content_type": "text/html", "body_bytes": 1, "artifact_path": str(p), "sha256": hashlib.sha256(raw).hexdigest()})
                     invoker = FakeInvoker(payload)
-                    result = run_once(transport=transport, invoker=invoker, contract=contract())
+                    result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
             else:
                 invoker = FakeInvoker(job_payload({"engine": "x", "url": URL, "status": 200}))
-                result = run_once(transport=transport, invoker=invoker, contract=contract())
+                result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
             self.assertEqual(result["status"], "ACCEPTED")
             self.assertEqual(invoker.calls[0][0], CAPABILITY_TOOL_MAP[capability])
             self.assertEqual(len(transport.submitted), 1)
@@ -266,7 +268,16 @@ class ProviderAgentRunTests(unittest.TestCase):
         transport = FakeTransport(claim(req))
         invoker = FakeInvoker({})
         with self.assertRaises(ProviderAgentError):
-            run_once(transport=transport, invoker=invoker, contract=contract())
+            run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
+        self.assertEqual(invoker.calls, [])
+        self.assertEqual(transport.failed[0]["failure_class"], "PROVIDER_CONTRACT_MISMATCH")
+
+    def test_expired_claim_fails_before_mcp(self):
+        req = request("C0_FETCH")
+        transport = FakeTransport(claim(req))
+        invoker = FakeInvoker({})
+        with self.assertRaisesRegex(ProviderAgentError, "expired"):
+            run_once(transport=transport, invoker=invoker, contract=contract(), now=datetime(2026, 9, 8, 6, 3, tzinfo=UTC))
         self.assertEqual(invoker.calls, [])
         self.assertEqual(transport.failed[0]["failure_class"], "PROVIDER_CONTRACT_MISMATCH")
 
@@ -279,7 +290,7 @@ class ProviderAgentRunTests(unittest.TestCase):
                 raise RuntimeError("mcp unavailable")
 
         with self.assertRaises(RuntimeError):
-            run_once(transport=transport, invoker=BrokenInvoker(), contract=contract())
+            run_once(transport=transport, invoker=BrokenInvoker(), contract=contract(), now=NOW)
         self.assertEqual(transport.failed[0]["failure_class"], "PROVIDER_NOT_READY")
 
 
