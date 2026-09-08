@@ -4,6 +4,47 @@ Mac-centric local Browser Execution Plane implementing the frozen R1 v1.4.1 arch
 
 **Current state:** Authorized R1 Operational Scope = **COMPLETE**. See `docs/R1-OPERATIONAL-BASELINE-CLOSURE-2026-09-04.md` for the implemented baseline, accepted operating boundaries, explicit deferrals, and evidence-based reopen rules.
 
+## AI / Agent capability discovery
+
+**Mac Browser Plane C0–C3 is operational.** Authorized agents should treat this Mac as an available browser execution plane rather than assuming only HTTP fetch is available.
+
+Current capability status:
+
+```text
+C0 Fetch               COMPLETE
+C1 Render              COMPLETE
+C2 Read-only Inspect   COMPLETE
+C3 Browser Use         COMPLETE
+C3 Semantic Targeting  COMPLETE
+Autonomous Browser Agent / embedded LLM planner  DEFERRED
+```
+
+Primary local MCP:
+
+```text
+mac-browser-plane
+transport = stdio
+```
+
+Recommended discovery sequence for an MCP-capable caller:
+
+```text
+1. discover/connect mac-browser-plane
+2. call browser_capabilities
+3. call browser_doctor when readiness matters
+4. choose:
+   C0 -> browser_fetch
+   C1 -> browser_render
+   C2 -> browser_inspect
+   C3 -> browser_use
+```
+
+`browser_use` is the operational C3 interaction surface. It supports deterministic multi-step browser work including `navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, and `download`, plus CSS and semantic targeting (`role`/accessible `name`, `label`, `text_target`). The caller owns reasoning/planning; Browser Plane owns reliable execution.
+
+See `docs/AI_CAPABILITY_ANNOUNCEMENT.md` for the portable announcement intended for ChatGPT/Codex/OpenClaw/Hermes/other agents, and `src/browser_plane/capabilities.json` for the machine-readable capability manifest.
+
+**Discovery limitation:** no repository or MCP can guarantee that every possible AI agent will discover a capability automatically. Discovery requires that the caller can see this repository, receives `AGENTS.md`/README context, or has the `mac-browser-plane` MCP configured. The project therefore publishes the same truth through multiple discovery surfaces.
+
 ## Boundary
 
 ```text
