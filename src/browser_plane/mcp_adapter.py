@@ -39,6 +39,51 @@ _ALLOWED_BROWSER_ACTIONS = {
     "screenshot",
     "download",
 }
+_BROWSER_TARGET_FIELDS = ("selector", "role", "label", "text_target")
+_BROWSER_TARGET_REQUIRED_ACTIONS = {"click", "type", "select", "download"}
+_BROWSER_TARGET_OPTIONAL_ACTIONS = {"press", "wait"}
+
+
+def _normalize_browser_target(action: dict[str, Any], index: int, *, required: bool) -> str | None:
+    targets: dict[str, str] = {}
+    for field in _BROWSER_TARGET_FIELDS:
+        raw = action.get(field)
+        if raw is None:
+            continue
+        value = str(raw).strip()
+        if not value:
+            continue
+        if len(value) > 2_000:
+            raise ToolError(f"action {index} {field} is too large")
+        targets[field] = value
+        action[field] = value
+
+    if len(targets) > 1:
+        raise ToolError(
+            f"action {index} must use exactly one target form: selector, role, label, or text_target"
+        )
+    if required and not targets:
+        raise ToolError(
+            f"action {index} requires one target form: selector, role, label, or text_target"
+        )
+
+    target_kind = next(iter(targets), None)
+    if "name" in action:
+        if target_kind != "role":
+            raise ToolError(f"action {index} name is allowed only with role targeting")
+        name = str(action["name"]).strip()
+        if not name:
+            raise ToolError(f"action {index} role name must not be empty")
+        if len(name) > 2_000:
+            raise ToolError(f"action {index} role name is too large")
+        action["name"] = name
+    if "exact" in action:
+        if target_kind not in {"role", "label", "text_target"}:
+            raise ToolError(f"action {index} exact is allowed only with semantic targeting")
+        if not isinstance(action["exact"], bool):
+            raise ToolError(f"action {index} exact must be a boolean")
+        action["exact"] = bool(action["exact"])
+    return target_kind
 
 
 def _runtime() -> tuple[RuntimePaths, RuntimeDB, JobStore]:
@@ -115,11 +160,12 @@ def _validate_browser_actions(actions: list[dict[str, Any]]) -> tuple[dict[str, 
             raise ToolError(f"action {index} timeout_ms must be between 1 and 60000")
         action["timeout_ms"] = timeout_ms
 
-        selector = str(action.get("selector", "")).strip()
-        if kind in {"click", "type", "select", "download"} and not selector:
-            raise ToolError(f"action {index} ({kind}) requires selector")
-        if selector:
-            action["selector"] = selector
+        target_kind: str | None = None
+        if kind in _BROWSER_TARGET_REQUIRED_ACTIONS:
+            target_kind = _normalize_browser_target(action, index, required=True)
+        elif kind in _BROWSER_TARGET_OPTIONAL_ACTIONS:
+            target_kind = _normalize_browser_target(action, index, required=False)
+
         if kind in {"click", "select"} and "force" in action:
             if not isinstance(action["force"], bool):
                 raise ToolError(f"action {index} {kind} force must be a boolean")
@@ -146,7 +192,7 @@ def _validate_browser_actions(actions: list[dict[str, Any]]) -> tuple[dict[str, 
                 raise ToolError(f"action {index} press requires key")
             action["key"] = key
         elif kind == "wait":
-            if selector:
+            if target_kind:
                 state = str(action.get("state", "visible"))
                 if state not in {"attached", "detached", "visible", "hidden"}:
                     raise ToolError(f"action {index} wait state is invalid")
