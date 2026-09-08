@@ -208,11 +208,10 @@ If Hermes/Codex later needs an MCP protocol surface, add a thin adapter around t
 - separate Chrome DevTools MCP adapter/server
 - autonomous Browser Agent / LLM planner
 - headed/human takeover
-- SignalForge-to-Mac unattended Provider Invocation Contract
 
 ## Cross-project invariant
 
-Existing `vps-worker-plane` Direct HTTP/API/ETL and Bangkok SignalForge remain unchanged. VPS Browser/Crawlee R3 is superseded and must not be implemented.
+`vps-worker-plane` Direct HTTP/API/ETL remains the default acquisition path. Bangkok SignalForge now has one explicitly authorized cross-host Provider path for S38 through PIC v1; this does not reintroduce VPS Browser/Crawlee R3, which remains superseded and must not be implemented.
 
 ## M1 freeze statement
 
@@ -226,4 +225,9 @@ Existing `vps-worker-plane` Direct HTTP/API/ETL and Bangkok SignalForge remain u
 - [x] dedicated launchd template and installer bind the reviewed production contract plus dedicated provider key;
 - [x] idle polling suppresses `NO_WORK` log spam;
 - [x] launchd service restarts on transient agent exit and does not become a second Browser worker;
-- [ ] merged-main CI and installed-runtime live verification pending this change set.
+- [x] merged-main CI and installed-runtime live verification complete;
+- [x] production runtime source is `7a13bcb1ab8acf0a69585bbddc0a6d88cd56d9ea`;
+- [x] Provider LaunchAgent is running with dedicated restricted SSH identity and zero TCP listeners;
+- [x] installed runtime reports `production_enabled=true`, `invocation_mode=pull_ssh_v1`, `remote_invocation=true`;
+- [x] production backlog-drain behavior is `work done -> 0s delay`, `NO_WORK -> 10s idle delay`;
+- [x] live Mac-offline isolation and unattended S38 production recovery are recorded in `docs/PIC-R4-PRODUCTION-CLOSURE-2026-09-08.md`.
