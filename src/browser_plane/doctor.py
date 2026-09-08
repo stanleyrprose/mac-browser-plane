@@ -72,6 +72,30 @@ class Doctor:
             {"installed": lightpanda_path is not None, "path": lightpanda_path},
             degraded=True,
         )
+        camoufox_package_installed = importlib.util.find_spec("camoufox") is not None
+        camoufox_browser_path: str | None = None
+        camoufox_browser_version: str | None = None
+        if camoufox_package_installed:
+            try:
+                from camoufox.pkgman import camoufox_path, installed_verstr
+
+                installed_path = camoufox_path(download_if_missing=False)
+                if installed_path.exists():
+                    camoufox_browser_path = str(installed_path)
+                    camoufox_browser_version = installed_verstr()
+            except Exception:
+                pass
+        add(
+            "camoufox_optional",
+            True,
+            {
+                "python_package_installed": camoufox_package_installed,
+                "browser_installed": camoufox_browser_path is not None,
+                "browser_path": camoufox_browser_path,
+                "browser_version": camoufox_browser_version,
+            },
+            degraded=True,
+        )
 
         stale = LeaseManager(self.db).list_stale_profiles()
         add("stale_profile_leases", not stale, stale, degraded=True)

@@ -74,7 +74,8 @@ Implemented in the first milestone:
 - Browser Process Registry using PID + macOS process-start token;
 - C0 Direct Fetch using macOS `/usr/bin/curl` for HTTP/HTTPS with normal TLS verification; every HTTP response is preserved as a private raw artifact with SHA-256, with `text_excerpt` added only for textual content;
 - C1 internal engine routing: ephemeral `browser_render` prefers runtime-owned Lightpanda native DOM/JS rendering when available, with safe Chrome fallback; persistent-profile C1 remains Chrome;
-- Chrome C1/C2/C3 uses Playwright attached to runtime-owned local Google Chrome;
+- Camoufox is the fourth optional anti-detection engine for selective ephemeral C1/C3 jobs only; AUTO does not promote to it and no cross-engine replay fallback is allowed;
+- Chrome C1/C2/C3 uses Playwright attached to runtime-owned local Google Chrome; Camoufox uses a short-lived Browser Plane-owned Python runner around upstream Camoufox Firefox;
 - dynamic loopback CDP port (`--remote-debugging-port=0`) for Chrome sessions;
 - explicit 1440×900 Browser viewport;
 - Evidence `result.json`;
@@ -108,7 +109,7 @@ Still deferred:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[browser,agent,dev]'
+.venv/bin/python -m pip install -e '.[browser,antidetect,agent,dev]'
 .venv/bin/browserctl init
 .venv/bin/browserctl doctor
 ```
@@ -133,7 +134,15 @@ brew install lightpanda-io/browser/lightpanda
 
 Browser Plane auto-detects `lightpanda` from `PATH`, `/opt/homebrew/bin/lightpanda`, or `/usr/local/bin/lightpanda`; `BROWSER_PLANE_LIGHTPANDA` may override the binary path. Lightpanda is an internal ephemeral-C1 engine only in routing v1. C2/C3 and persistent-profile C1 remain Chrome. See `docs/LIGHTPANDA_ENGINE_ROUTING.md`.
 
-No Playwright-managed Chromium download is required.
+Optional Camoufox anti-detection engine:
+
+```bash
+.venv/bin/python -m camoufox fetch
+```
+
+Camoufox v1 is selective-only: internal `engine=camoufox` is allowed for ephemeral C1/C3 jobs, while AUTO routing, persistent profiles, C2 diagnostics, proxy routing, REST server, native Camofox MCP, and automatic cross-engine fallback remain disabled. The project uses upstream `camoufox` directly and does not embed `jo-inc/camofox-browser`. See `docs/CAMOUFOX_ENGINE_ROUTING.md`.
+
+No Playwright-managed Chromium download is required for the Chrome engine; Camoufox maintains its own Firefox asset under the user Camoufox cache.
 
 ## Runtime state
 

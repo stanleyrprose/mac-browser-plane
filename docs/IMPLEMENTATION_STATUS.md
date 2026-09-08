@@ -131,6 +131,27 @@ This slice adds Lightpanda as an internal execution engine without changing the 
 
 Detailed routing contract: `docs/LIGHTPANDA_ENGINE_ROUTING.md`.
 
+## Post-R1 engine slice — Camoufox Optional Anti-Detection Engine
+
+This slice adds upstream Camoufox as the fourth internal Browser Plane engine while deliberately rejecting the `jo-inc/camofox-browser` server/runtime/MCP architecture. The existing nine-tool MCP surface, JobStore, worker, leases, evidence ownership, provider boundary, and external planning model remain unchanged.
+
+- [x] `BrowserEngine` now supports internal `auto/chrome/lightpanda/camoufox` values while the public MCP remains engine-agnostic;
+- [x] upstream Python package pinned as `camoufox==0.5.6`, with project Playwright constrained to `>=1.55,<1.63` to match upstream compatibility guidance;
+- [x] installed Camoufox browser at integration time: `v152.0.4-beta.30` for macOS arm64;
+- [x] Camoufox runs through a short-lived Browser Plane-owned Python subprocess around `camoufox.sync_api.Camoufox`, not through a REST daemon or a second MCP;
+- [x] the wrapper process participates in the existing Browser Process Registry, Control Lease, heartbeat, cancellation, evidence, and cleanup paths;
+- [x] Camoufox v1 supports selective ephemeral C1 render and C3 Browser Use only;
+- [x] C2 remains Chrome-only and Camoufox persistent profiles remain disabled;
+- [x] AUTO routing never promotes to Camoufox; selection is explicit/source-evidence only;
+- [x] no automatic Camoufox -> Chrome or Chrome -> Camoufox replay fallback is allowed, preserving the `partial_effect_possible` safety boundary for C3;
+- [x] no `jo-inc/camofox-browser` REST server, MCP, state database, proxy/GeoIP routing, VNC/human takeover, plugin macros, or arbitrary JavaScript surface is introduced;
+- [x] isolated live C1 smoke against `https://example.com`: `SUCCEEDED / HTTP 200`, selected `camoufox`, no fallback;
+- [x] isolated live C3 smoke: snapshot -> semantic click -> wait -> snapshot -> screenshot reached `https://www.iana.org/help/example-domains`, `SUCCEEDED / HTTP 200`;
+- [x] post-live `browser_doctor = READY`, stale Profile Leases `[]`, Browser Process Registry ownership residue `[]`;
+- [x] current full source regression suite: **56/56 PASS**.
+
+Detailed routing contract: `docs/CAMOUFOX_ENGINE_ROUTING.md`.
+
 ## Final verification
 
 - Python compilation: PASS
