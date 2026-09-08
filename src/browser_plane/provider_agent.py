@@ -354,6 +354,12 @@ def load_contract(path: Path) -> dict[str, Any]:
     return value
 
 
+def _poll_delay(result: dict[str, Any], interval_sec: float) -> float:
+    if result.get("status") != "NO_WORK":
+        return 0.0
+    return max(1.0, float(interval_sec))
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="signalforge-provider-agent")
     parser.add_argument("--host", required=True, help="Restricted Bangkok SSH host/alias")
@@ -376,7 +382,9 @@ def main() -> None:
                 print(json.dumps({"ok": True, "result": result}, ensure_ascii=False, sort_keys=True), flush=True)
             if args.once:
                 return
-            time.sleep(max(1.0, float(args.interval_sec)))
+            delay = _poll_delay(result, args.interval_sec)
+            if delay:
+                time.sleep(delay)
     except KeyboardInterrupt:
         return
     except Exception as exc:
