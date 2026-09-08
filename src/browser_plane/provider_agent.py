@@ -209,6 +209,21 @@ def _public_job(payload: dict[str, Any]) -> dict[str, Any]:
     return structured
 
 
+def _portable_result(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_portable_result(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    cleaned: dict[str, Any] = {}
+    for key, item in value.items():
+        if key in {"artifact_path", "screenshot"}:
+            continue
+        if key == "path" and isinstance(item, str) and item.startswith("/"):
+            continue
+        cleaned[key] = _portable_result(item)
+    return cleaned
+
+
 def package_success(claim: dict[str, Any], mcp_payload: dict[str, Any]) -> bytes:
     request = claim["request"]
     job = _public_job(mcp_payload)
@@ -223,7 +238,7 @@ def package_success(claim: dict[str, Any], mcp_payload: dict[str, Any]) -> bytes
         if result.get("sha256") != hashlib.sha256(artifact).hexdigest() or result.get("body_bytes") != len(artifact):
             raise ProviderAgentError("C0 local artifact integrity mismatch")
     else:
-        artifact = canonical_json({"job_id": job["job_id"], "state": job["state"], "result": result})
+        artifact = canonical_json({"job_id": job["job_id"], "state": job["state"], "result": _portable_result(result)})
         media_type = "application/json"
     final_url = result.get("url")
     if not isinstance(final_url, str) or not final_url:
