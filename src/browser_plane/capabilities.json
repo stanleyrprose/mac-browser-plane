@@ -3,8 +3,8 @@
   "provider_id": "mac-mm-01",
   "provider_type": "browser",
   "runtime": "mac-browser-plane-r1",
-  "production_enabled": false,
-  "invocation_mode": "local_cli_only",
+  "production_enabled": true,
+  "invocation_mode": "pull_ssh_v1",
   "network": {
     "direct": true,
     "southeast_asia": false,
@@ -23,7 +23,7 @@
     "persistent_profile": true,
     "screenshot": true,
     "binary_artifact": true,
-    "remote_invocation": false,
+    "remote_invocation": true,
     "headed_human_takeover": false,
     "c3_actions": [
       "navigate",

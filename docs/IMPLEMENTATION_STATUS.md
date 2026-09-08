@@ -57,7 +57,7 @@ This does **not** reopen or expand the completed R1 Browser execution baseline. 
 - [x] execution tools submit to the existing SQLite JobStore and never start a second Browser worker;
 - [x] agent-facing HTTP(S)-only URL guard rejects obvious local/non-global literal targets;
 - [x] no HTTP/WebSocket MCP listener, public port, extra launchd service, arbitrary JavaScript, raw CDP, click/type, or C3 Browser Agent surface;
-- [x] capability manifest records the local adapter separately while cross-host `production_enabled=false`, `invocation_mode=local_cli_only`, and `remote_invocation=false` remain unchanged.
+- [x] historical local-adapter closure kept cross-host production disabled at that stage; PIC-v1 R4 later supersedes only that cross-host invocation flag while preserving the same local stdio MCP boundary.
 
 Detailed contract: `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`.
 Live closure: `docs/LOCAL_AGENT_MCP_ADAPTER_V0-LIVE-CLOSURE-2026-09-05.md`.
@@ -217,3 +217,13 @@ Existing `vps-worker-plane` Direct HTTP/API/ETL and Bangkok SignalForge remain u
 ## M1 freeze statement
 
 > Mac mini now owns the verified local Browser Runtime baseline. The running LaunchAgent consumes Browser Jobs from the local SQLite state store and executes C0/C1 plus dedicated read-only C2 diagnostics locally. No VPS Browser runtime, regional egress layer, extra DevTools daemon, or cross-host SignalForge invocation was introduced.
+
+## PIC v1 R4 — SignalForge Provider Production Enable
+
+- [x] capability manifest projects `production_enabled=true`, `invocation_mode=pull_ssh_v1`, and `remote_invocation=true`;
+- [x] remote means a dedicated Mac Provider Agent makes outbound restricted SSH calls to Bangkok; no Browser/MCP/CDP listener is opened on the Mac;
+- [x] Provider Agent still invokes Browser capabilities only through local `mac-browser-mcp` stdio;
+- [x] dedicated launchd template and installer bind the reviewed production contract plus dedicated provider key;
+- [x] idle polling suppresses `NO_WORK` log spam;
+- [x] launchd service restarts on transient agent exit and does not become a second Browser worker;
+- [ ] merged-main CI and installed-runtime live verification pending this change set.
