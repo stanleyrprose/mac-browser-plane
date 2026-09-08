@@ -24,7 +24,25 @@
     "screenshot": true,
     "binary_artifact": true,
     "remote_invocation": false,
-    "headed_human_takeover": false
+    "headed_human_takeover": false,
+    "c3_actions": [
+      "navigate",
+      "click",
+      "type",
+      "select",
+      "press",
+      "wait",
+      "snapshot",
+      "screenshot",
+      "download"
+    ],
+    "c3_targeting": [
+      "selector",
+      "role_with_optional_name",
+      "label",
+      "text_target"
+    ],
+    "c3_planning": "external_caller"
   },
   "security": {
     "tls_verification_required": true,
@@ -38,5 +56,26 @@
     "generic_interaction": true,
     "arbitrary_javascript": false,
     "raw_cdp": false
+  },
+  "discovery": {
+    "status": "operational",
+    "recommended_entrypoint": "browser_capabilities",
+    "readiness_tool": "browser_doctor",
+    "primary_interaction_tool": "browser_use",
+    "mcp_server": "mac-browser-plane",
+    "mcp_transport": "stdio",
+    "agent_planning_location": "caller",
+    "documentation": [
+      "README.md",
+      "AGENTS.md",
+      "docs/AI_CAPABILITY_ANNOUNCEMENT.md",
+      "docs/IMPLEMENTATION_STATUS.md"
+    ],
+    "capability_routing": {
+      "C0_FETCH": "browser_fetch",
+      "C1_RENDER": "browser_render",
+      "C2_INSPECT": "browser_inspect",
+      "C3_BROWSER_USE": "browser_use"
+    }
   }
 }
