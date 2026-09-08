@@ -18,6 +18,7 @@ dev = ["pytest>=8,<9"]
 browserctl = "browser_plane.cli:main"
 mac-browser-mcp = "browser_plane.mcp_adapter:main"
 mac-browser-mcp-call = "browser_plane.mcp_call:main"
+signalforge-provider-agent = "browser_plane.provider_agent:main"
 mac-browser-provider-agent = "browser_plane.provider_agent:main"
 
 [tool.setuptools.packages.find]
