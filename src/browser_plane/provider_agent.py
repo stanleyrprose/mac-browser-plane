@@ -372,7 +372,8 @@ def main() -> None:
     try:
         while True:
             result = run_once(transport=transport, invoker=invoker, contract=contract)
-            print(json.dumps({"ok": True, "result": result}, ensure_ascii=False, sort_keys=True), flush=True)
+            if args.once or result.get("status") != "NO_WORK":
+                print(json.dumps({"ok": True, "result": result}, ensure_ascii=False, sort_keys=True), flush=True)
             if args.once:
                 return
             time.sleep(max(1.0, float(args.interval_sec)))

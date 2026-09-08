@@ -146,7 +146,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.is_error)
         self.assertEqual(result.structured_content["provider_id"], "mac-mm-01")
         self.assertEqual(result.structured_content["local_agent_adapter"]["transport"], "stdio")
-        self.assertFalse(result.structured_content["capabilities"]["remote_invocation"])
+        self.assertTrue(result.structured_content["capabilities"]["remote_invocation"])
 
     async def test_mcp_exposes_only_the_authorized_v0_tools(self) -> None:
         async with Client(mcp) as client:

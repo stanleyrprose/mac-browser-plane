@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.stanley.mac-browser-provider</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__RUNTIME_PROVIDER_AGENT__</string>
+    <string>--host</string>
+    <string>__PROVIDER_HOST__</string>
+    <string>--identity-file</string>
+    <string>__IDENTITY_FILE__</string>
+    <string>--contract</string>
+    <string>__RUNTIME_CONTRACT__</string>
+    <string>--interval-sec</string>
+    <string>10</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__RUNTIME_HOME__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>BROWSER_PLANE_HOME</key>
+    <string>__RUNTIME_HOME__</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>__RUNTIME_HOME__/logs/provider.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>__RUNTIME_HOME__/logs/provider.stderr.log</string>
+</dict>
+</plist>

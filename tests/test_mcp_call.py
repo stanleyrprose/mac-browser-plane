@@ -59,8 +59,8 @@ class McpCallStdioSmokeTests(unittest.TestCase):
         capabilities = payload["structured_content"]
         self.assertIsInstance(capabilities, dict)
         self.assertEqual(capabilities.get("provider_id"), "mac-mm-01")
-        self.assertFalse(capabilities.get("production_enabled"))
-        self.assertFalse(capabilities.get("remote_invocation"))
+        self.assertTrue(capabilities.get("production_enabled"))
+        self.assertTrue(capabilities["capabilities"]["remote_invocation"])
 
 
 if __name__ == "__main__":

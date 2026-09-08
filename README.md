@@ -190,7 +190,7 @@ Machine-readable capability manifest:
 .venv/bin/browserctl capabilities
 ```
 
-This reports the authorized R1 boundary plus post-R1 interface slices: direct-only network egress, C0/C1/C2, deterministic C3 Browser Use, and `production_enabled=false` for cross-host production use.
+This reports the authorized R1 boundary plus post-R1 interface slices: direct-only network egress, C0/C1/C2, deterministic C3 Browser Use, and PIC-v1 `pull_ssh_v1` production invocation for explicitly allowlisted SignalForge sources. The Mac still exposes no public Browser/MCP/CDP listener.
 
 ## Local Agent MCP Adapter
 
@@ -202,7 +202,18 @@ For local MCP-capable agents, the installed runtime also provides a stdio-only e
 
 It exposes nine tools: capabilities, doctor, C0 fetch, C1 render, C2 inspect, C3 `browser_use`, job status, job result, and job cancel. `browser_use` executes a deterministic action sequence (`navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, `download`) through the existing JobStore/LaunchAgent/Chrome path. Targeted actions accept either a CSS `selector` or one semantic target form: ARIA `role` (optionally with accessible `name`), `label`, or visible `text_target`; semantic targets may request `exact: true`. `snapshot` returns both a bounded body-text excerpt and a bounded Playwright AI-mode ARIA snapshot so an external agent can inspect an unfamiliar UI without receiving arbitrary DOM/JavaScript authority. `click` and `select` still accept optional `force: true` for known overlay/interception or hidden-native-control cases while ordinary interaction remains the default. It still does **not** expose arbitrary JavaScript, raw CDP, arbitrary Playwright objects, or an embedded/autonomous Browser Agent. The MCP host owns the child-process lifecycle; there is no MCP HTTP listener or second launchd service.
 
-The original eight-tool v0 adapter contract is documented in `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`; C3/M3B extends that same stdio surface without adding another runtime.
+The original eight-tool v0 adapter contract is documented in `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`; C3/M3B extends that same stdio surface without adding another Browser runtime. Cross-host SignalForge production is a separate pull-only Provider Agent service which reuses this same local MCP stdio surface.
+
+## SignalForge Provider Agent
+
+PIC v1 production uses a dedicated launchd service which **pulls** bounded requests from Bangkok over restricted SSH and invokes `mac-browser-mcp` locally over stdio. It does not listen on any Mac TCP port and does not reuse an administrative SSH key. Install it from the reviewed production contract with:
+
+```bash
+python3 scripts/install_provider_launchd.py \
+  --contract-source /path/to/signalforge/registry/Provider-Invocation-Contract-v1.json
+```
+
+The installer copies the reviewed contract to the runtime config tree and binds the service to the dedicated provider SSH identity. Production source authorization remains source/URL/capability specific; there is no automatic Direct HTTP failure -> Browser fallback.
 
 SQLite-consistent runtime backup:
 
