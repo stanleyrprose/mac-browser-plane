@@ -58,7 +58,7 @@ A post-R1 **Local Agent MCP Adapter v0** now provides a thin stdio-only protocol
 
 Still deferred:
 
-- Browser Use C3;
+- autonomous C3 Browser Agent / embedded LLM planner;
 - headed/human takeover;
 - SignalForge remote provider invocation.
 
@@ -159,7 +159,7 @@ For local MCP-capable agents, the installed runtime also provides a stdio-only e
 /Users/xu/agent-browser-runtime/app/venv/bin/mac-browser-mcp
 ```
 
-It exposes nine tools: capabilities, doctor, C0 fetch, C1 render, C2 inspect, C3 `browser_use`, job status, job result, and job cancel. `browser_use` executes a deterministic action sequence (`navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, `download`) through the existing JobStore/LaunchAgent/Chrome path. `click` and `select` accept optional `force: true` for known overlay/interception or hidden-native-control cases while ordinary interaction remains the default. It still does **not** expose arbitrary JavaScript, raw CDP, arbitrary Playwright objects, or an autonomous Browser Agent. The MCP host owns the child-process lifecycle; there is no MCP HTTP listener or second launchd service.
+It exposes nine tools: capabilities, doctor, C0 fetch, C1 render, C2 inspect, C3 `browser_use`, job status, job result, and job cancel. `browser_use` executes a deterministic action sequence (`navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, `download`) through the existing JobStore/LaunchAgent/Chrome path. Targeted actions accept either a CSS `selector` or one semantic target form: ARIA `role` (optionally with accessible `name`), `label`, or visible `text_target`; semantic targets may request `exact: true`. `snapshot` returns both a bounded body-text excerpt and a bounded Playwright AI-mode ARIA snapshot so an external agent can inspect an unfamiliar UI without receiving arbitrary DOM/JavaScript authority. `click` and `select` still accept optional `force: true` for known overlay/interception or hidden-native-control cases while ordinary interaction remains the default. It still does **not** expose arbitrary JavaScript, raw CDP, arbitrary Playwright objects, or an embedded/autonomous Browser Agent. The MCP host owns the child-process lifecycle; there is no MCP HTTP listener or second launchd service.
 
 The original eight-tool v0 adapter contract is documented in `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`; C3/M3B extends that same stdio surface without adding another runtime.
 

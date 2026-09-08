@@ -445,6 +445,52 @@ class BrowserExecutor:
             if remove_dir:
                 shutil.rmtree(user_data_dir, ignore_errors=True)
 
+    @staticmethod
+    def _action_locator(page: Any, action: dict[str, Any], *, required: bool) -> Any | None:
+        targets = [
+            ("selector", str(action.get("selector", "")).strip()),
+            ("role", str(action.get("role", "")).strip()),
+            ("label", str(action.get("label", "")).strip()),
+            ("text_target", str(action.get("text_target", "")).strip()),
+        ]
+        targets = [(kind, value) for kind, value in targets if value]
+        if len(targets) > 1:
+            raise CapabilityError("browser action must use exactly one target form")
+        if not targets:
+            if required:
+                raise CapabilityError("browser action requires selector, role, label, or text_target")
+            return None
+
+        kind, value = targets[0]
+        exact = action.get("exact")
+        if exact is not None and not isinstance(exact, bool):
+            raise CapabilityError("semantic target exact must be a boolean")
+        if kind == "selector":
+            if "name" in action or exact is not None:
+                raise CapabilityError("selector targeting does not accept name/exact")
+            return page.locator(value)
+        if kind == "role":
+            kwargs: dict[str, Any] = {}
+            name = str(action.get("name", "")).strip()
+            if name:
+                kwargs["name"] = name
+            if exact is not None:
+                kwargs["exact"] = exact
+            return page.get_by_role(value, **kwargs)
+        if "name" in action:
+            raise CapabilityError("name is allowed only with role targeting")
+        if kind == "label":
+            return page.get_by_label(value, exact=exact)
+        return page.get_by_text(value, exact=exact)
+
+    @staticmethod
+    def _action_target(action: dict[str, Any]) -> dict[str, object]:
+        return {
+            key: action[key]
+            for key in ("selector", "role", "label", "text_target", "name", "exact")
+            if key in action
+        }
+
     def _run_browser_actions(
         self,
         page: Any,
@@ -483,37 +529,36 @@ class BrowserExecutor:
                         "status": response.status if response else None,
                     }
                 elif kind == "click":
-                    selector = str(action.get("selector", "")).strip()
-                    if not selector:
-                        raise CapabilityError("click requires selector")
+                    locator = self._action_locator(page, action, required=True)
                     force = bool(action.get("force", False))
-                    page.locator(selector).click(timeout=timeout_ms, force=force)
+                    locator.click(timeout=timeout_ms, force=force)
                     item = {
                         "step": index,
                         "action": kind,
-                        "selector": selector,
+                        "target": self._action_target(action),
                         "force": force,
                         "url": page.url,
                     }
                 elif kind == "type":
-                    selector = str(action.get("selector", "")).strip()
-                    if not selector:
-                        raise CapabilityError("type requires selector")
+                    locator = self._action_locator(page, action, required=True)
                     text = str(action.get("text", ""))
-                    page.locator(selector).fill(text, timeout=timeout_ms)
-                    item = {"step": index, "action": kind, "selector": selector, "chars": len(text)}
-                elif kind == "select":
-                    selector = str(action.get("selector", "")).strip()
-                    if not selector or "value" not in action:
-                        raise CapabilityError("select requires selector and value")
-                    force = bool(action.get("force", False))
-                    selected = page.locator(selector).select_option(
-                        value=str(action["value"]), timeout=timeout_ms, force=force
-                    )
+                    locator.fill(text, timeout=timeout_ms)
                     item = {
                         "step": index,
                         "action": kind,
-                        "selector": selector,
+                        "target": self._action_target(action),
+                        "chars": len(text),
+                    }
+                elif kind == "select":
+                    locator = self._action_locator(page, action, required=True)
+                    if "value" not in action:
+                        raise CapabilityError("select requires value")
+                    force = bool(action.get("force", False))
+                    selected = locator.select_option(value=str(action["value"]), timeout=timeout_ms, force=force)
+                    item = {
+                        "step": index,
+                        "action": kind,
+                        "target": self._action_target(action),
                         "force": force,
                         "selected": list(selected),
                     }
@@ -521,20 +566,30 @@ class BrowserExecutor:
                     key = str(action.get("key", "")).strip()
                     if not key:
                         raise CapabilityError("press requires key")
-                    selector = str(action.get("selector", "")).strip()
-                    if selector:
-                        page.locator(selector).press(key, timeout=timeout_ms)
+                    locator = self._action_locator(page, action, required=False)
+                    if locator is not None:
+                        locator.press(key, timeout=timeout_ms)
                     else:
                         page.keyboard.press(key)
-                    item = {"step": index, "action": kind, "key": key, "selector": selector or None}
+                    item = {
+                        "step": index,
+                        "action": kind,
+                        "key": key,
+                        "target": self._action_target(action) if locator is not None else None,
+                    }
                 elif kind == "wait":
-                    selector = str(action.get("selector", "")).strip()
-                    if selector:
+                    locator = self._action_locator(page, action, required=False)
+                    if locator is not None:
                         state = str(action.get("state", "visible"))
                         if state not in {"attached", "detached", "visible", "hidden"}:
                             raise CapabilityError("wait state is invalid")
-                        page.locator(selector).wait_for(state=state, timeout=timeout_ms)
-                        item = {"step": index, "action": kind, "selector": selector, "state": state}
+                        locator.wait_for(state=state, timeout=timeout_ms)
+                        item = {
+                            "step": index,
+                            "action": kind,
+                            "target": self._action_target(action),
+                            "state": state,
+                        }
                     else:
                         wait_ms = int(action.get("ms", 1000))
                         if wait_ms < 0 or wait_ms > 30_000:
@@ -542,12 +597,16 @@ class BrowserExecutor:
                         page.wait_for_timeout(wait_ms)
                         item = {"step": index, "action": kind, "ms": wait_ms}
                 elif kind == "snapshot":
+                    body = page.locator("body")
+                    aria_tree = body.aria_snapshot(timeout=timeout_ms, depth=8, mode="ai")
                     item = {
                         "step": index,
                         "action": kind,
                         "url": page.url,
                         "title": page.title(),
-                        "text_excerpt": page.locator("body").inner_text(timeout=timeout_ms)[:4000],
+                        "text_excerpt": body.inner_text(timeout=timeout_ms)[:4000],
+                        "aria_snapshot": aria_tree[:12000],
+                        "aria_snapshot_truncated": len(aria_tree) > 12000,
                     }
                 elif kind == "screenshot":
                     evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -557,11 +616,9 @@ class BrowserExecutor:
                     screenshot_path.chmod(0o600)
                     item = {"step": index, "action": kind, "path": str(screenshot_path)}
                 elif kind == "download":
-                    selector = str(action.get("selector", "")).strip()
-                    if not selector:
-                        raise CapabilityError("download requires selector")
+                    locator = self._action_locator(page, action, required=True)
                     with page.expect_download(timeout=timeout_ms) as download_info:
-                        page.locator(selector).click(timeout=timeout_ms)
+                        locator.click(timeout=timeout_ms)
                     download = download_info.value
                     raw_name = str(action.get("filename") or download.suggested_filename or f"download-{index}.bin")
                     safe_name = Path(raw_name).name
@@ -579,7 +636,7 @@ class BrowserExecutor:
                     item = {
                         "step": index,
                         "action": kind,
-                        "selector": selector,
+                        "target": self._action_target(action),
                         "path": str(target),
                         "bytes": target.stat().st_size,
                         "sha256": digest,

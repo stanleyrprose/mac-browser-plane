@@ -63,14 +63,22 @@ class MCPAdapterContractTests(unittest.TestCase):
         actions = _validate_browser_actions(
             [
                 {"action": "navigate", "url": "https://example.com/next"},
-                {"action": "click", "selector": "#go", "force": True},
-                {"action": "type", "selector": "#q", "text": "tender"},
+                {"action": "click", "role": "button", "name": "Search", "exact": True, "force": True},
+                {"action": "type", "label": "Keyword", "text": "tender", "exact": True},
                 {"action": "select", "selector": "#legal_type", "value": "Notification", "force": True},
+                {"action": "wait", "text_target": "Results", "state": "visible"},
                 {"action": "snapshot"},
             ]
         )
-        self.assertEqual([item["action"] for item in actions], ["navigate", "click", "type", "select", "snapshot"])
+        self.assertEqual(
+            [item["action"] for item in actions],
+            ["navigate", "click", "type", "select", "wait", "snapshot"],
+        )
+        self.assertEqual(actions[1]["role"], "button")
+        self.assertEqual(actions[1]["name"], "Search")
         self.assertTrue(actions[1]["force"])
+        self.assertEqual(actions[2]["label"], "Keyword")
+        self.assertEqual(actions[4]["text_target"], "Results")
         self.assertTrue(actions[3]["force"])
         with self.assertRaises(ToolError):
             _validate_browser_actions([])
@@ -82,6 +90,12 @@ class MCPAdapterContractTests(unittest.TestCase):
             _validate_browser_actions([{"action": "click", "selector": "#go", "force": "true"}])
         with self.assertRaises(ToolError):
             _validate_browser_actions([{"action": "select", "selector": "#legal_type", "value": "Law", "force": "true"}])
+        with self.assertRaises(ToolError):
+            _validate_browser_actions([{"action": "click", "selector": "#go", "role": "button"}])
+        with self.assertRaises(ToolError):
+            _validate_browser_actions([{"action": "click", "label": "Search", "name": "Search"}])
+        with self.assertRaises(ToolError):
+            _validate_browser_actions([{"action": "click", "role": "button", "exact": "true"}])
 
     def test_submit_and_wait_uses_existing_runtime_queue_not_a_second_worker(self) -> None:
         jobs = _FakeJobs()

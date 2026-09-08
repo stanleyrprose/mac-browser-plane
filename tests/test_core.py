@@ -60,6 +60,8 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertFalse(manifest["capabilities"]["c1_generic_interaction"])
         self.assertTrue(manifest["capabilities"]["c2_readonly_inspect"])
         self.assertTrue(manifest["capabilities"]["c3_browser_use"])
+        self.assertTrue(manifest["capabilities"]["c3_semantic_targeting"])
+        self.assertTrue(manifest["capabilities"]["c3_aria_snapshot"])
         self.assertFalse(manifest["capabilities"]["c3_browser_agent"])
         self.assertFalse(manifest["capabilities"]["remote_invocation"])
         self.assertTrue(manifest["security"]["tls_verification_required"])
@@ -344,11 +346,16 @@ class ExecutorTests(unittest.TestCase):
                 current = locators.setdefault(selector, Mock())
                 if selector == "body":
                     current.inner_text.return_value = "body text"
+                    current.aria_snapshot.return_value = '- heading "Example"\n- button "Search"'
                 if selector == "#select":
                     current.select_option.return_value = ["b"]
                 return current
 
             page.locator.side_effect = locator
+            role_locator = Mock()
+            label_locator = Mock()
+            page.get_by_role.return_value = role_locator
+            page.get_by_label.return_value = label_locator
             response = Mock(status=204)
 
             def goto(url: str, **_: object) -> Mock:
@@ -374,8 +381,8 @@ class ExecutorTests(unittest.TestCase):
             page.expect_download.side_effect = lambda **_: DownloadContext()
             actions = (
                 {"action": "navigate", "url": "https://example.com/next"},
-                {"action": "click", "selector": "#button", "force": True},
-                {"action": "type", "selector": "#input", "text": "hello"},
+                {"action": "click", "role": "button", "name": "Search", "exact": True, "force": True},
+                {"action": "type", "label": "Keyword", "text": "hello", "exact": True},
                 {"action": "select", "selector": "#select", "value": "b", "force": True},
                 {"action": "press", "key": "Escape"},
                 {"action": "wait", "ms": 5},
@@ -388,12 +395,18 @@ class ExecutorTests(unittest.TestCase):
 
             self.assertEqual(len(results), 9)
             self.assertEqual(results[0]["status"], 204)
-            locators["#button"].click.assert_called_once_with(timeout=10_000, force=True)
-            locators["#input"].fill.assert_called_once_with("hello", timeout=10_000)
+            page.get_by_role.assert_called_once_with("button", name="Search", exact=True)
+            role_locator.click.assert_called_once_with(timeout=10_000, force=True)
+            page.get_by_label.assert_called_once_with("Keyword", exact=True)
+            label_locator.fill.assert_called_once_with("hello", timeout=10_000)
             locators["#select"].select_option.assert_called_once_with(value="b", timeout=10_000, force=True)
             page.keyboard.press.assert_called_once_with("Escape")
             page.wait_for_timeout.assert_called_once_with(5)
+            self.assertEqual(results[1]["target"]["role"], "button")
+            self.assertEqual(results[2]["target"]["label"], "Keyword")
             self.assertEqual(results[6]["text_excerpt"], "body text")
+            self.assertIn('button "Search"', results[6]["aria_snapshot"])
+            self.assertFalse(results[6]["aria_snapshot_truncated"])
 
             screenshot = Path(str(results[7]["path"]))
             downloaded = Path(str(results[8]["path"]))
@@ -402,6 +415,15 @@ class ExecutorTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(screenshot.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(downloaded.stat().st_mode), 0o600)
             self.assertEqual(results[8]["sha256"], hashlib.sha256(b"pdf").hexdigest())
+
+    def test_c3_action_locator_rejects_ambiguous_target(self) -> None:
+        page = Mock()
+        with self.assertRaises(CapabilityError):
+            BrowserExecutor._action_locator(
+                page,
+                {"selector": "#search", "role": "button"},
+                required=True,
+            )
 
     def test_c2_readonly_cdp_allowlist_blocks_mutation(self) -> None:
         session = Mock()

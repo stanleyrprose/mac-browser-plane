@@ -96,6 +96,18 @@ M3B adds deterministic multi-step browser interaction on top of the same runtime
 - [x] real-business acceptance on Myanmar National Trade Portal: a Materialize CSS hidden native `<select>` reproduced the default visibility timeout; `select force: true` was added and live-verified with `type -> select(force) -> press -> wait -> snapshot -> screenshot`, job `27672825-e1ad-4a0d-91b9-3df560867131`, `SUCCEEDED`;
 - [x] current multi-client verification: Cloud ChatGPT C3 via CodexPro PASS; OpenClaw direct stdio discovery **9 tools** and C3 live PASS; Hermes direct stdio discovery **9 tools** and C3 live PASS; Codex direct stdio registration points at the production runtime and is enabled, while the latest agent live recheck was blocked before tool execution by provider usage quota rather than MCP transport.
 
+## Post-R1 interface slice — C3 Semantic Targeting / M3C
+
+M3C keeps the existing nine-tool MCP surface and deterministic executor, but makes C3 usable on unfamiliar UIs without requiring the caller to know CSS selectors in advance. Planning remains outside Browser Plane; no embedded LLM, second worker, network listener, or broader JavaScript/CDP authority is introduced.
+
+- [x] targeted actions accept exactly one of CSS `selector`, ARIA `role` (optional accessible `name`), `label`, or visible `text_target`;
+- [x] semantic targets support optional boolean `exact`; ambiguous mixed target forms fail closed before execution;
+- [x] `click`, `type`, `select`, `press`, `wait`, and `download` reuse the semantic locator resolver while preserving existing timeout/force/evidence behavior;
+- [x] C3 `snapshot` adds a bounded Playwright AI-mode ARIA snapshot (`depth=8`, 12,000-character response cap) alongside the existing body-text excerpt;
+- [x] capability manifest explicitly advertises `c3_semantic_targeting=true` and `c3_aria_snapshot=true` while `c3_browser_agent=false` remains unchanged;
+- [x] source regression suite **34/34 PASS** using the production MCP/Playwright dependency environment; Python compilation PASS;
+- [ ] merged-main CI and installed-runtime semantic C3 live smoke pending.
+
 ## Final verification
 
 - Python compilation: PASS

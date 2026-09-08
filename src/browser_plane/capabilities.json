@@ -17,6 +17,8 @@
     "c1_generic_interaction": false,
     "c2_readonly_inspect": true,
     "c3_browser_use": true,
+    "c3_semantic_targeting": true,
+    "c3_aria_snapshot": true,
     "c3_browser_agent": false,
     "persistent_profile": true,
     "screenshot": true,
