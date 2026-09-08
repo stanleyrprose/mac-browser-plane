@@ -106,7 +106,11 @@ M3C keeps the existing nine-tool MCP surface and deterministic executor, but mak
 - [x] C3 `snapshot` adds a bounded Playwright AI-mode ARIA snapshot (`depth=8`, 12,000-character response cap) alongside the existing body-text excerpt;
 - [x] capability manifest explicitly advertises `c3_semantic_targeting=true` and `c3_aria_snapshot=true` while `c3_browser_agent=false` remains unchanged;
 - [x] source regression suite **34/34 PASS** using the production MCP/Playwright dependency environment; Python compilation PASS;
-- [ ] merged-main CI and installed-runtime semantic C3 live smoke pending.
+- [x] PR #22 merged to `main` at `55836c3`; both GitHub Actions `test` checks PASS;
+- [x] merged `main` reinstalled into `~/agent-browser-runtime/app/`, LaunchAgent reloaded, and stdio contract remained exactly **9/9** tools;
+- [x] Cloud ChatGPT -> CodexPro -> `browser_use` semantic live smoke: `https://example.com` snapshot -> `click(role=link)` -> wait -> snapshot -> screenshot reached `https://www.iana.org/help/example-domains`, job `ce164bea-3e32-4741-aebf-323d8e182f73`, `SUCCEEDED / HTTP 200`;
+- [x] live snapshots returned bounded ARIA trees before and after navigation (`aria_snapshot_truncated=false` in this smoke);
+- [x] post-install source suite **34/34 PASS**; post-live `browser_doctor = READY`, SQLite integrity `ok`, stale Profile Leases `[]`, Browser Process Registry ownership residue `[]`.
 
 ## Final verification
 

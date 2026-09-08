@@ -181,3 +181,39 @@ HTTP        = 200
 ```
 
 Post-live `browserctl doctor` returned `READY`, SQLite integrity `ok`, stale profile leases `[]`, Browser Process Registry ownership residue `[]`, and the installed-runtime source suite passed **33/33** tests.
+
+## M3C / C3 Semantic Targeting bridge extension — 2026-09-08
+
+PR #22 merged to `main` at `55836c3`, with both GitHub Actions `test` checks passing. The merged runtime was reinstalled and the LaunchAgent reloaded without changing the MCP transport or tool count.
+
+The capability manifest now advertises:
+
+```text
+c3_browser_use        = true
+c3_semantic_targeting = true
+c3_aria_snapshot      = true
+c3_browser_agent      = false
+```
+
+A cloud ChatGPT live job then exercised semantic targeting rather than a CSS selector:
+
+```text
+ChatGPT Web
+-> CodexPro
+-> mac-browser-mcp-call call browser_use
+-> mac-browser-mcp (stdio)
+-> existing LaunchAgent worker
+-> runtime-owned Chrome / Playwright
+
+start_url   = https://example.com
+interaction = snapshot -> click(role=link) -> wait(body) -> snapshot -> screenshot
+final_url   = https://www.iana.org/help/example-domains
+job_id      = ce164bea-3e32-4741-aebf-323d8e182f73
+state       = SUCCEEDED
+engine      = c3-browser-use
+HTTP        = 200
+```
+
+Both live snapshots returned bounded Playwright AI-mode ARIA trees, including the `Learn more` link on the first page and the `Example Domains` heading after navigation. The smoke did not require a CSS selector for the click and did not expose arbitrary JavaScript, raw CDP, or an embedded LLM planner.
+
+Post-live `browser_doctor` returned `READY`, SQLite integrity `ok`, stale Profile Leases `[]`, Browser Process Registry ownership residue `[]`, and the post-install source suite passed **34/34** tests.
