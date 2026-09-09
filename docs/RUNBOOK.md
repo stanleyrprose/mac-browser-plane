@@ -1,165 +1,223 @@
-# Mac Browser Plane R1 — Runtime Runbook
+# Mac Browser Plane — Production Runbook
 
-## 1. Health
+This runbook describes the **current** production state. Dated R1/PIC closure files remain historical acceptance evidence.
+
+## 1. Normal health check
+
+From the development checkout:
 
 ```bash
 cd /Users/xu/Documents/mcpx-projects/mac-browser-plane
 .venv/bin/browserctl doctor
 ```
 
-`READY` is required before normal M1 use.
-
-## 2. Runtime home
+Expected status:
 
 ```text
-~/agent-browser-runtime/
+READY
 ```
 
-Key paths:
+Important checks include runtime paths, SQLite integrity/WAL/FULL/busy timeout, Chrome, optional Lightpanda/Camoufox readiness, stale Profile Leases, Browser Process Registry ownership, and free disk.
 
-```text
-state/runtime.db
-evidence/
-profiles/
-auth-state/
-logs/
-run/doctor.json
-```
+If `doctor` is not READY, classify the failed check before restarting or modifying anything.
 
-## 3. Worker service
+## 2. Services
 
-LaunchAgent label:
+Runtime worker LaunchAgent:
 
 ```text
 com.stanley.mac-browser-plane
 ```
 
-Install:
+Provider Agent LaunchAgent:
+
+```text
+com.stanley.mac-browser-provider
+```
+
+The Provider Agent is a separate polling/invocation service, not a second Browser worker. It ultimately submits work through the same local MCP/JobStore execution path.
+
+## 3. Runtime locations
+
+```text
+Development source:
+~/Documents/mcpx-projects/mac-browser-plane/
+
+Production app:
+~/agent-browser-runtime/app/
+
+Runtime state:
+~/agent-browser-runtime/state/runtime.db
+
+Profiles:
+~/agent-browser-runtime/profiles/
+
+Evidence:
+~/agent-browser-runtime/evidence/
+
+Logs:
+~/agent-browser-runtime/logs/
+
+Run/doctor state:
+~/agent-browser-runtime/run/
+
+Backups:
+~/agent-browser-runtime/backups/
+```
+
+Do not point launchd directly at the checkout under `~/Documents`.
+
+## 4. Production update
+
+After a reviewed source revision is ready:
 
 ```bash
+.venv/bin/python scripts/install_runtime.py
 .venv/bin/python scripts/install_launchd.py
+.venv/bin/browserctl doctor
 ```
 
-Remove:
+If Provider Agent code/contract needs production installation, use the reviewed contract source:
 
 ```bash
-.venv/bin/python scripts/uninstall_launchd.py
+python3 scripts/install_provider_launchd.py \
+  --contract-source /path/to/signalforge/registry/Provider-Invocation-Contract-v1.json
 ```
 
-FileVault/user-login is a real boot boundary: after a cold reboot/power cycle, Browser Plane may not become available until the user session is unlocked.
+Do not invent or broaden the Provider contract during deployment.
 
-## 4. Job recovery
+## 5. Local job operations
 
-Only one Runtime Worker may execute Jobs at a time. The worker holds:
+Synchronous job:
+
+```bash
+.venv/bin/browserctl run --file job.json
+```
+
+Queue lifecycle:
+
+```bash
+.venv/bin/browserctl submit --file job.json
+.venv/bin/browserctl status <job-id>
+.venv/bin/browserctl wait <job-id> --timeout 30
+.venv/bin/browserctl result <job-id>
+.venv/bin/browserctl cancel <job-id>
+```
+
+Capability discovery:
+
+```bash
+.venv/bin/browserctl capabilities
+```
+
+## 6. Recovery after crash/reboot
+
+Only one Runtime Worker may own execution. It holds:
 
 ```text
 ~/agent-browser-runtime/run/worker.lock
 ```
 
-A second worker exits with `WORKER_ALREADY_RUNNING`.
+A second worker should fail with `WORKER_ALREADY_RUNNING`.
 
-When a new Worker acquires the lock after an unclean shutdown, startup recovery:
+On unclean startup, allow built-in recovery to reconcile interrupted jobs, owned processes, and leases. Do not manually delete locks/profile state or broadly kill browsers first.
 
-1. finds Jobs left `RUNNING`, `PAUSED_FOR_INSPECTION`, `WAITING_HUMAN`, or `CANCEL_REQUESTED`;
-2. reconciles registered Browser processes using PID + process-start identity + runtime-owned userDataDir when present;
-3. gracefully terminates only processes whose ownership is proven;
-4. marks gone owned processes closed;
-5. moves interrupted Jobs to `RECOVERY_REQUIRED`;
-6. releases Profile/Control leases only when process reconciliation is safe;
-7. leaves ambiguous ownership fail-closed for operator review.
+Interrupted work can become `RECOVERY_REQUIRED`. Before replaying a job, determine whether it was read-only/idempotent and whether `partial_effect_possible` is true.
 
-Do not delete Chrome SingletonLock files blindly, and do not re-run irreversible work unless idempotency is known.
+## 7. Browser ownership incident
 
-## 5. Browser ownership
-
-Never use broad commands such as:
+Never use:
 
 ```text
 pkill Chrome
 killall 'Google Chrome'
 ```
 
-Browser Plane only terminates a process when runtime ownership is confirmed by its registry and macOS process-start token.
+Browser Plane terminates only processes whose ownership is proven by the Browser Process Registry plus PID/start-token identity.
 
-## 6. Profile rules
+If ownership is ambiguous, fail closed and inspect rather than killing a potentially personal browser.
 
-- Personal Chrome profile is never used.
-- `public-research`, `authenticated-work`, and `development` are separate runtime directories.
+## 8. Profile incident
+
+Rules:
+
+- Personal Chrome profile is forbidden;
+- runtime profiles are isolated;
 - persistent profile ownership is exclusive;
-- lease expiry alone is not permission to steal or delete profile state.
+- lease expiry is not permission to delete or steal profile state;
+- stale `DevToolsActivePort` cleanup is performed only by runtime logic under the exclusive lease;
+- do not delete Chrome SingletonLock/SingletonCookie blindly.
 
-Runtime/private file permissions:
+## 9. Engine troubleshooting
 
-```text
-runtime/profile/evidence directories = 0700
-runtime.db / backups / doctor.json / result.json / screenshots = 0600
-```
+### C0 curl
 
-Do not loosen these permissions to solve an access problem; fix the caller/runtime ownership instead.
+A TLS/client failure does not automatically mean the source requires a browser. Keep TLS verification enabled and classify the failure.
 
-C0 HTTP/HTTPS uses macOS `/usr/bin/curl` with normal certificate verification. Do not add `-k` / `--insecure`. A C0 TLS/client failure must be classified before escalating to C1; it does not by itself prove that a site requires Browser execution.
+### C1 Lightpanda
 
-Every C0 HTTP/HTTPS response is preserved under the Job evidence directory as a private raw artifact (`0600`) with SHA-256. Common suffixes are normalized from Content-Type (`response.html`, `response.txt`, `response.json`, `response.xml`, `response.pdf`); unknown binary content falls back to the URL suffix or `.bin`. Textual responses additionally expose only a bounded `text_excerpt` in the Job result. Browser Plane does not parse PDFs or canonicalize business content.
+Ephemeral C1 AUTO may try Lightpanda then fall back to Chrome only when replay is side-effect safe. Inspect `engine_route` evidence for attempted/selected engine and fallback reason.
 
-## 7. CDP / C2 read-only diagnostics
+### C2 Chrome
 
-C1/C2 Chrome uses:
+C2 depends on Chrome diagnostic semantics and remains Chrome-only.
 
-```text
---remote-debugging-port=0
-```
+### C3 Chrome
 
-The runtime reads the dynamically allocated local port from `DevToolsActivePort` and connects over loopback only.
+Ordinary AUTO C3 uses Chrome. Do not replay a failed mutating C3 sequence across engines automatically.
 
-C2 `task_type=inspect` runs in a dedicated diagnostic Browser Session and may only use the explicit diagnostic allowlist. Current CDP methods are limited to navigation-history, performance instrumentation/read, and accessibility-tree reads. `Runtime.evaluate` and other state-changing CDP methods are denied.
+### Camoufox
 
-Run a diagnostic job:
+Camoufox is selective only. It should be chosen from explicit/source evidence, not generic rules such as `403 -> Camoufox`. No automatic cross-engine fallback is allowed.
 
-```bash
-.venv/bin/browserctl run --file examples/c2-smoke.json
-```
+## 10. Evidence
 
-Evidence includes `result.json` plus `screenshot.png`.
+C0 persists the full raw HTTP response privately with SHA-256. C1/C2/C3 persist bounded result/evidence records; screenshots/downloads stay under the evidence tree when produced.
 
-Never expose CDP publicly.
+Do not copy evidence into the Git repository. Evidence may contain sensitive site/session information.
 
-## 8. Backup
+## 11. Backup
 
-Git is canonical for source/config/docs.
-
-Create an online SQLite-consistent runtime backup with:
+Create an online SQLite-consistent backup:
 
 ```bash
-browserctl backup
+.venv/bin/browserctl backup
 ```
 
-Default destination:
+The command uses SQLite backup semantics and runs integrity checking. Do not raw-copy a live WAL database as the normal backup method.
+
+Current backup scope is runtime SQLite state only. Authenticated profile/cookie state and evidence are intentionally not copied by this minimal backup path; recovery may require re-authentication.
+
+## 12. Cold power-cycle boundary
+
+The host is configured to restart after power loss, but the Browser Plane Runtime Worker is a user LaunchAgent. FileVault/user-session state means a manual macOS login may be required after a cold boot before Browser Plane returns to READY.
+
+This is an accepted current boundary, not a service bug.
+
+## 13. Provider path incident
+
+Provider production is pull-only from the Mac:
 
 ```text
-~/agent-browser-runtime/backups/runtime-<timestamp>.db
+Mac Provider Agent -> restricted outbound SSH -> Bangkok claim/report
+                  -> local MCP stdio -> Browser Plane worker
 ```
 
-The command uses SQLite's backup API and immediately runs `PRAGMA integrity_check`; it does not raw-copy the WAL database and does not require stopping the LaunchAgent.
+If SignalForge provider work stops:
 
-This R1 backup intentionally covers runtime SQLite state only. Authenticated Chrome profiles/cookies are sensitive and are **not** copied automatically; disaster recovery may require re-authentication. Evidence is also not included in this minimal backup path.
+1. verify base `browserctl doctor` first;
+2. distinguish local Browser Plane health from Provider transport/contract failure;
+3. verify the dedicated provider identity/contract has not been broadened or replaced;
+4. do not open an inbound Browser/MCP/CDP port as a workaround;
+5. do not use an administrative SSH identity in place of the dedicated provider identity.
 
-## 9. Verification
+## 14. Post-incident verification
+
+Minimum closure:
 
 ```bash
-.venv/bin/python -m unittest -v tests.test_core
-.venv/bin/python scripts/soak_m1.py --jobs 1000 --browser-jobs 5 --submitters 8
-.venv/bin/browserctl run --file examples/c2-smoke.json
+.venv/bin/python -m unittest discover -s tests -v
 .venv/bin/browserctl doctor
 ```
 
-## 10. Scope boundary
-
-R1 currently has no:
-
-- SEA/VPS Browser egress;
-- China Browser route;
-- separate `chrome-devtools-mcp` server/adapter;
-- Browser Use C3;
-- SignalForge remote invocation.
-
-Existing VPS Worker Runtime / SignalForge Direct HTTP remains a separate execution path.
+For lifecycle/concurrency/process ownership fixes, add the relevant targeted regression test and, when warranted, the soak harness. Avoid unrelated test expansion.
