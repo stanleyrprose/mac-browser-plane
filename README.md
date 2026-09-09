@@ -1,111 +1,98 @@
 # Mac Browser Plane
 
-Mac-centric local Browser Execution Plane implementing the frozen R1 v1.4.1 architecture.
+Mac Browser Plane is the browser execution runtime on the Mac mini. It gives authorized local or bridged AI callers a bounded C0–C3 browser capability surface while keeping browser lifecycle, state, profiles, leases, evidence, and engine routing inside one runtime.
 
-**Current state:** Authorized R1 Operational Scope = **COMPLETE**. See `docs/R1-OPERATIONAL-BASELINE-CLOSURE-2026-09-04.md` for the implemented baseline, accepted operating boundaries, explicit deferrals, and evidence-based reopen rules.
+## Current production status
 
-## AI / Agent capability discovery
+**Status: OPERATIONAL / READY**
 
-**Mac Browser Plane C0–C3 is operational.** Authorized agents should treat this Mac as an available browser execution plane rather than assuming only HTTP fetch is available.
+As of **2026-09-09**, the current checkout passed the full source regression suite (**56/56 tests**) and `browserctl doctor` returned `READY` with SQLite integrity `ok`, Chrome/Lightpanda/Camoufox available, no stale profile leases, and no Browser Process Registry ownership residue.
 
-Current capability status:
+The current machine-readable contract is `src/browser_plane/capabilities.json`.
 
-```text
-C0 Fetch               COMPLETE
-C1 Render              COMPLETE
-C2 Read-only Inspect   COMPLETE
-C3 Browser Use         COMPLETE
-C3 Semantic Targeting  COMPLETE
-Autonomous Browser Agent / embedded LLM planner  DEFERRED
-```
+| Capability | Status | Primary surface |
+| --- | --- | --- |
+| C0 Fetch | COMPLETE | `browser_fetch` |
+| C1 Render | COMPLETE | `browser_render` |
+| C2 Read-only Inspect | COMPLETE | `browser_inspect` |
+| C3 Browser Use | COMPLETE | `browser_use` |
+| C3 Semantic Targeting / ARIA Snapshot | COMPLETE | `browser_use` |
+| Local MCP adapter | OPERATIONAL | stdio `mac-browser-plane` |
+| SignalForge remote provider invocation | OPERATIONAL | `pull_ssh_v1` |
+| Autonomous embedded Browser Agent / LLM planner | DEFERRED | planning stays with caller |
+| Headed human takeover | DEFERRED | not exposed |
 
-Primary local MCP:
-
-```text
-mac-browser-plane
-transport = stdio
-```
-
-Recommended discovery sequence for an MCP-capable caller:
+## What this project is
 
 ```text
-1. discover/connect mac-browser-plane
-2. call browser_capabilities
-3. call browser_doctor when readiness matters
-4. choose:
-   C0 -> browser_fetch
-   C1 -> browser_render
-   C2 -> browser_inspect
-   C3 -> browser_use
+Authorized caller
+  ├─ local CLI (`browserctl`)
+  ├─ local MCP client (Codex / Hermes / OpenClaw / ChatGPT bridge)
+  │    └─ stdio `mac-browser-plane`
+  └─ SignalForge provider path
+       └─ Mac Provider Agent -> outbound restricted SSH pull -> local MCP stdio
+
+                         Mac Browser Plane
+                                │
+                      SQLite JobStore + leases
+                                │
+                         launchd Runtime Worker
+                                │
+             ┌──────────────────┼───────────────────┐
+             │                  │                   │
+          C0 curl         C1/C2/C3 Chrome      optional engines
+                                               ├─ Lightpanda
+                                               └─ Camoufox
+                                │
+                     private evidence artifacts
 ```
 
-`browser_use` is the operational C3 interaction surface. It supports deterministic multi-step browser work including `navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, and `download`, plus CSS and semantic targeting (`role`/accessible `name`, `label`, `text_target`). The caller owns reasoning/planning; Browser Plane owns reliable execution.
+The caller owns task reasoning and planning. Browser Plane owns deterministic execution, lifecycle control, safety boundaries, and evidence.
 
-See `docs/AI_CAPABILITY_ANNOUNCEMENT.md` for the portable announcement intended for ChatGPT/Codex/OpenClaw/Hermes/other agents, and `src/browser_plane/capabilities.json` for the machine-readable capability manifest.
+## Engine routing
 
-**Discovery limitation:** no repository or MCP can guarantee that every possible AI agent will discover a capability automatically. Discovery requires that the caller can see this repository, receives `AGENTS.md`/README context, or has the `mac-browser-plane` MCP configured. The project therefore publishes the same truth through multiple discovery surfaces.
+Engine choice is normally internal to Browser Plane.
 
-## Boundary
+| Work type | Current route |
+| --- | --- |
+| C0 HTTP/HTTPS fetch | macOS `/usr/bin/curl` |
+| C1 ephemeral JS/DOM render | Lightpanda first, then safe Chrome fallback |
+| C1 persistent profile | Chrome |
+| C2 read-only inspect | Chrome |
+| ordinary AUTO C3 Browser Use | Chrome |
+| fingerprint-sensitive ephemeral C1/C3 | Camoufox only when explicitly/source-evidence selected |
+
+Important fallback boundary: automatic Lightpanda -> Chrome fallback is limited to side-effect-safe ephemeral C1 work. Camoufox has no automatic cross-engine replay fallback.
+
+See `docs/LIGHTPANDA_ENGINE_ROUTING.md` and `docs/CAMOUFOX_ENGINE_ROUTING.md`.
+
+## C3 Browser Use
+
+`browser_use` supports deterministic action sequences:
 
 ```text
-Mac mini
-= Browser Router / Runtime / State / Profiles / Evidence
-
-R1 network egress
-= Mac mini direct Internet connection only
+navigate
+click
+type
+select
+press
+wait
+snapshot
+screenshot
+download
 ```
 
-This repository does **not** replace `vps-worker-plane` or Bangkok SignalForge. Existing VPS Direct HTTP/API/ETL stays in the VPS Worker Runtime. The old future VPS Browser/Crawlee R3 direction is superseded by this project.
+Targets may use CSS `selector`, ARIA `role` with optional accessible `name`, `label`, or visible `text_target`. Snapshot can include a bounded body-text excerpt and bounded ARIA snapshot for external planning.
 
-SignalForge-to-Mac unattended production invocation is intentionally not implemented in R1.
+Arbitrary JavaScript and raw CDP are not exposed.
 
-## M1 scope
+## Quick start for development
 
-Implemented in the first milestone:
+Requirements:
 
-- local `browserctl` CLI;
-- SQLite runtime state with WAL, `synchronous=FULL`, `busy_timeout=5000`;
-- Job state/version CAS;
-- idempotent submit;
-- queue / run / cancel lifecycle;
-- single active Runtime Worker enforced by local `worker.lock`;
-- startup recovery for interrupted active Jobs / owned Browser processes / leases;
-- Profile Lease and browser-session Control Lease;
-- Browser Process Registry using PID + macOS process-start token;
-- C0 Direct Fetch using macOS `/usr/bin/curl` for HTTP/HTTPS with normal TLS verification; every HTTP response is preserved as a private raw artifact with SHA-256, with `text_excerpt` added only for textual content;
-- C1 internal engine routing: ephemeral `browser_render` prefers runtime-owned Lightpanda native DOM/JS rendering when available, with safe Chrome fallback; persistent-profile C1 remains Chrome;
-- Camoufox is the fourth optional anti-detection engine for selective ephemeral C1/C3 jobs only; AUTO does not promote to it and no cross-engine replay fallback is allowed;
-- Chrome C1/C2/C3 uses Playwright attached to runtime-owned local Google Chrome; Camoufox uses a short-lived Browser Plane-owned Python runner around upstream Camoufox Firefox;
-- dynamic loopback CDP port (`--remote-debugging-port=0`) for Chrome sessions;
-- explicit 1440×900 Browser viewport;
-- Evidence `result.json`;
-- `browserctl doctor`;
-- launchd worker template;
-- M1 1000-job soak harness.
-
-Network simplification for R1:
-
-- Browser traffic uses the Mac mini direct Internet connection;
-- no SEA/VPS browser egress routing;
-- no China Browser egress.
-
-M3A simplified C2 is now implemented:
-
-- `task_type=inspect` launches a dedicated diagnostic Chrome session;
-- read-only CDP allowlist only;
-- captures console, request/response summaries, navigation history, performance metrics, accessibility-tree count, and screenshot;
-- no `Runtime.evaluate`, navigation/input mutation, cookie/storage mutation, or request mocking through the diagnostic CDP surface;
-- no separate `chrome-devtools-mcp` daemon/server.
-
-A post-R1 **Local Agent MCP Adapter v0** now provides a thin stdio-only protocol surface over the same verified runtime for local Codex/Hermes-class callers. It does not add a second Browser worker or expand C0/C1/C2 semantics. See `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`.
-
-Still deferred:
-
-- autonomous C3 Browser Agent / embedded LLM planner;
-- headed/human takeover;
-- SignalForge remote provider invocation.
-
-## Install
+- macOS;
+- Python 3.12+;
+- installed Google Chrome for the Chrome engine.
 
 ```bash
 python3 -m venv .venv
@@ -114,171 +101,133 @@ python3 -m venv .venv
 .venv/bin/browserctl doctor
 ```
 
-The runtime reuses the installed macOS Google Chrome at:
-
-```text
-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
-```
-
-Override only when necessary:
-
-```bash
-export BROWSER_PLANE_CHROME=/path/to/Chrome
-```
-
-Optional Lightpanda C1 fast path on Apple Silicon Macs:
+Optional Lightpanda fast path:
 
 ```bash
 brew install lightpanda-io/browser/lightpanda
 ```
 
-Browser Plane auto-detects `lightpanda` from `PATH`, `/opt/homebrew/bin/lightpanda`, or `/usr/local/bin/lightpanda`; `BROWSER_PLANE_LIGHTPANDA` may override the binary path. Lightpanda is an internal ephemeral-C1 engine only in routing v1. C2/C3 and persistent-profile C1 remain Chrome. See `docs/LIGHTPANDA_ENGINE_ROUTING.md`.
-
-Optional Camoufox anti-detection engine:
+Optional Camoufox browser asset:
 
 ```bash
 .venv/bin/python -m camoufox fetch
 ```
 
-Camoufox v1 is selective-only: internal `engine=camoufox` is allowed for ephemeral C1/C3 jobs, while AUTO routing, persistent profiles, C2 diagnostics, proxy routing, REST server, native Camofox MCP, and automatic cross-engine fallback remain disabled. The project uses upstream `camoufox` directly and does not embed `jo-inc/camofox-browser`. See `docs/CAMOUFOX_ENGINE_ROUTING.md`.
+## Production installation
 
-No Playwright-managed Chromium download is required for the Chrome engine; Camoufox maintains its own Firefox asset under the user Camoufox cache.
-
-## Runtime state
-
-Default:
-
-```text
-~/agent-browser-runtime/
-├── state/runtime.db
-├── profiles/
-├── auth-state/
-├── evidence/
-├── logs/
-└── run/
-```
-
-Set `BROWSER_PLANE_HOME` to override for tests/isolated deployments.
-
-## CLI
-
-Initialize:
-
-```bash
-.venv/bin/browserctl init
-```
-
-Synchronous local job:
-
-```bash
-.venv/bin/browserctl run --file examples/c1-smoke.json
-```
-
-Read-only diagnostic job:
-
-```bash
-.venv/bin/browserctl run --file examples/c2-smoke.json
-```
-
-Queue:
-
-```bash
-.venv/bin/browserctl submit --file job.json
-.venv/bin/browserctl status <job-id>
-.venv/bin/browserctl wait <job-id> --timeout 30
-.venv/bin/browserctl result <job-id>
-.venv/bin/browserctl cancel <job-id>
-```
-
-Worker:
-
-```bash
-.venv/bin/browserctl worker
-```
-
-Doctor:
-
-```bash
-.venv/bin/browserctl doctor
-```
-
-Machine-readable capability manifest:
-
-```bash
-.venv/bin/browserctl capabilities
-```
-
-This reports the authorized R1 boundary plus post-R1 interface slices: direct-only network egress, C0/C1/C2, deterministic C3 Browser Use, and PIC-v1 `pull_ssh_v1` production invocation for explicitly allowlisted SignalForge sources. The Mac still exposes no public Browser/MCP/CDP listener.
-
-## Local Agent MCP Adapter
-
-For local MCP-capable agents, the installed runtime also provides a stdio-only executable:
-
-```text
-/Users/xu/agent-browser-runtime/app/venv/bin/mac-browser-mcp
-```
-
-It exposes nine tools: capabilities, doctor, C0 fetch, C1 render, C2 inspect, C3 `browser_use`, job status, job result, and job cancel. `browser_use` executes a deterministic action sequence (`navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, `download`) through the existing JobStore/LaunchAgent/Chrome path. Targeted actions accept either a CSS `selector` or one semantic target form: ARIA `role` (optionally with accessible `name`), `label`, or visible `text_target`; semantic targets may request `exact: true`. `snapshot` returns both a bounded body-text excerpt and a bounded Playwright AI-mode ARIA snapshot so an external agent can inspect an unfamiliar UI without receiving arbitrary DOM/JavaScript authority. `click` and `select` still accept optional `force: true` for known overlay/interception or hidden-native-control cases while ordinary interaction remains the default. It still does **not** expose arbitrary JavaScript, raw CDP, arbitrary Playwright objects, or an embedded/autonomous Browser Agent. The MCP host owns the child-process lifecycle; there is no MCP HTTP listener or second launchd service.
-
-The original eight-tool v0 adapter contract is documented in `docs/LOCAL_AGENT_MCP_ADAPTER_V0.md`; C3/M3B extends that same stdio surface without adding another Browser runtime. Cross-host SignalForge production is a separate pull-only Provider Agent service which reuses this same local MCP stdio surface.
-
-## SignalForge Provider Agent
-
-PIC v1 production uses a dedicated launchd service which **pulls** bounded requests from Bangkok over restricted SSH and invokes `mac-browser-mcp` locally over stdio. It does not listen on any Mac TCP port and does not reuse an administrative SSH key. Install it from the reviewed production contract with:
-
-```bash
-python3 scripts/install_provider_launchd.py \
-  --contract-source /path/to/signalforge/registry/Provider-Invocation-Contract-v1.json
-```
-
-The installer copies the reviewed contract to the runtime config tree and binds the service to the dedicated provider SSH identity. Production source authorization remains source/URL/capability specific; there is no automatic Direct HTTP failure -> Browser fallback.
-
-SQLite-consistent runtime backup:
-
-```bash
-.venv/bin/browserctl backup
-```
-
-By default the snapshot is written under `~/agent-browser-runtime/backups/`. This backs up runtime SQLite state only; it does not copy authenticated Chrome profiles/cookies.
-
-## Tests
-
-```bash
-.venv/bin/python -m unittest discover -s tests -v
-.venv/bin/python scripts/soak_m1.py --jobs 1000 --browser-jobs 5 --submitters 8
-```
-
-## launchd
-
-Do **not** run the LaunchAgent directly from a checkout under `~/Documents`. On macOS, `Documents` is TCC-protected; Terminal/Codex may have access while a background LaunchAgent does not. Production runtime is therefore installed separately under `~/agent-browser-runtime/app/`.
-
-Install the release runtime, then the LaunchAgent:
+Do not run the production LaunchAgent directly from the development checkout under `~/Documents`; macOS TCC can deny background access. Production code is copied into a separate non-editable runtime tree.
 
 ```bash
 .venv/bin/python scripts/install_runtime.py
 .venv/bin/python scripts/install_launchd.py
 ```
 
-The release venv is non-editable and independent from the development checkout. Updating source does not update the running release until `install_runtime.py` is run again.
+Production runtime root:
 
-Remove:
-
-```bash
-.venv/bin/python scripts/uninstall_launchd.py
+```text
+~/agent-browser-runtime/
+├── app/
+├── state/runtime.db
+├── profiles/
+├── auth-state/
+├── evidence/
+├── logs/
+├── backups/
+└── run/
 ```
 
-The LaunchAgent requires a logged-in user session. Current host power/login behavior is recorded in `docs/HOST_READINESS.md`; R1 accepts manual macOS login after a cold power cycle rather than adding automatic login or a system LaunchDaemon.
+SignalForge provider production is installed separately from a reviewed Provider Invocation Contract:
+
+```bash
+python3 scripts/install_provider_launchd.py \
+  --contract-source /path/to/signalforge/registry/Provider-Invocation-Contract-v1.json
+```
+
+The Provider Agent opens no Browser/MCP/CDP listener on the Mac. It polls Bangkok with a dedicated restricted SSH identity and invokes Browser Plane locally through MCP stdio.
+
+## Local MCP
+
+Production executable:
+
+```text
+~/agent-browser-runtime/app/venv/bin/mac-browser-mcp
+```
+
+The current MCP exposes nine tools: capabilities, doctor, fetch, render, inspect, browser use, job status, job result, and job cancel. It is stdio-only and does not start a network listener.
+
+Recommended discovery sequence:
+
+```text
+browser_capabilities
+browser_doctor      # when readiness matters
+browser_fetch       # C0
+browser_render      # C1
+browser_inspect     # C2
+browser_use         # C3
+```
+
+## Verification
+
+Normal regression:
+
+```bash
+.venv/bin/python -m compileall -q src tests scripts
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/browserctl doctor
+```
+
+Lifecycle/race changes may additionally require the soak harness:
+
+```bash
+.venv/bin/python scripts/soak_m1.py --jobs 1000 --browser-jobs 5 --submitters 8
+```
+
+Do not run expensive browser/soak validation for documentation-only changes unless a deployment or runtime invariant is also being changed.
 
 ## Security invariants
 
 - never use the user's Personal Chrome profile;
-- CDP stays loopback-only and dynamically allocated;
-- no public `0.0.0.0:9222`;
-- no TLS verification bypass;
+- CDP is loopback-only with a dynamic port;
+- no public Browser/MCP/CDP listener;
+- TLS verification remains enabled;
 - ambiguous Browser process ownership fails closed;
-- browser/session mutation has one control owner;
-- runtime state, backup, doctor/evidence JSON, and diagnostic screenshots are written `0600`; runtime/profile/evidence directories are `0700`;
-- R1 has no cross-host Browser API;
-- Local Agent MCP is stdio-only and starts no network listener;
-- Local Agent MCP does not expose generic interaction, arbitrary JavaScript, or raw CDP;
-- R1 does not install Browser runtime on VPS nodes.
+- Browser processes are owned through registry + PID + macOS process-start identity;
+- runtime/profile/evidence directories are `0700` and sensitive artifacts are `0600`;
+- local MCP exposes no arbitrary JavaScript or raw CDP;
+- cross-host SignalForge access is pull-only from the Mac with a dedicated restricted SSH identity and source/capability contract;
+- no automatic Direct HTTP failure -> Browser replay policy exists.
+
+See `docs/SECURITY.md`.
+
+## Documentation map
+
+Start with `docs/README.md`.
+
+Current-state documentation:
+
+- `docs/ARCHITECTURE.md` — component and execution architecture;
+- `docs/PROJECT_STATUS.md` — current completion/deferred status;
+- `docs/RUNBOOK.md` — operations and incident handling;
+- `docs/DEPLOYMENT.md` — development vs production installation and rollback;
+- `docs/DEVELOPMENT.md` — engineering workflow;
+- `docs/TESTING.md` — test strategy and CI;
+- `docs/SECURITY.md` — security model and invariants;
+- `docs/DECISIONS.md` — architecture decision index;
+- `docs/AI_CAPABILITY_ANNOUNCEMENT.md` — portable agent discovery contract.
+
+Dated `*-CLOSURE-YYYY-MM-DD.md` files are historical acceptance evidence. They must not be interpreted as the current capability boundary when later current-state documents or `capabilities.json` supersede them.
+
+## Project boundaries
+
+Mac Browser Plane does not replace `vps-worker-plane` or SignalForge. Direct HTTP/API/ETL remains a separate acquisition path. The old VPS Browser/Crawlee runtime direction is superseded: Browser execution lives on the Mac mini.
+
+Current deliberate deferrals include:
+
+- autonomous embedded Browser Agent / LLM planner;
+- headed/human takeover;
+- SEA/VPS browser egress;
+- China browser egress;
+- a separate Chrome DevTools MCP daemon;
+- Lightpanda or Camoufox native MCP/server surfaces.
+
+New scope should be introduced only when a concrete source/business need justifies it.
