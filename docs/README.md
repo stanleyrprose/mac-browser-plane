@@ -10,9 +10,10 @@ For current behavior, use this order:
 2. root `README.md` — current product entry point and boundaries;
 3. `docs/PROJECT_STATUS.md` — current completion/deferred status;
 4. `docs/ARCHITECTURE.md` — current architecture;
-5. `docs/RUNBOOK.md` / `docs/DEPLOYMENT.md` / `docs/SECURITY.md` — current operations;
-6. engine-specific current contracts (`LIGHTPANDA_ENGINE_ROUTING.md`, `CAMOUFOX_ENGINE_ROUTING.md`);
-7. dated closure documents — evidence for the state that was accepted on that date.
+5. `docs/INTERFACE_REFERENCE.md` / `docs/CONFIGURATION.md` — current caller and configuration reference;
+6. `docs/RUNBOOK.md` / `docs/DEPLOYMENT.md` / `docs/SECURITY.md` — current operations;
+7. engine-specific current contracts (`LIGHTPANDA_ENGINE_ROUTING.md`, `CAMOUFOX_ENGINE_ROUTING.md`);
+8. dated closure documents — evidence for the state that was accepted on that date.
 
 `AGENTS.md` is a capability-discovery hint for agents; it does not override the machine-readable contract.
 
@@ -23,6 +24,8 @@ For current behavior, use this order:
 | `../README.md` | project overview, quick start, current boundary |
 | `PROJECT_STATUS.md` | current implemented/deferred status and verification snapshot |
 | `ARCHITECTURE.md` | runtime components, execution paths, state/lease model |
+| `INTERFACE_REFERENCE.md` | current 9-tool MCP, C3 action schemas, CLI and JobSpec reference |
+| `CONFIGURATION.md` | environment variables, runtime paths, profiles, launchd/config boundary |
 | `RUNBOOK.md` | health, recovery, backup, troubleshooting, incident actions |
 | `DEPLOYMENT.md` | development install, production install, Provider Agent, rollback |
 | `DEVELOPMENT.md` | repository layout and engineering workflow |
@@ -34,6 +37,10 @@ For current behavior, use this order:
 | `HOST_READINESS.md` | Mac host/power/login readiness boundary |
 
 ## Interface and engine contracts
+
+Current general interface reference is `INTERFACE_REFERENCE.md`.
+
+Historical/narrow focused contracts:
 
 - `LOCAL_AGENT_MCP_ADAPTER_V0.md`
 - `LIGHTPANDA_ENGINE_ROUTING.md`
