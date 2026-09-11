@@ -23,6 +23,9 @@ from .models import BrowserEngine, Egress, JobSpec, JobState, ProfileMode, TaskT
 from .processes import BrowserProcessRegistry
 
 
+MAX_RENDERED_ARTIFACT_BYTES = 10_000_000
+
+
 class CapabilityError(RuntimeError):
     pass
 
@@ -307,6 +310,25 @@ class BrowserExecutor:
             "application/xml",
             "application/xhtml+xml",
         }
+
+    def _persist_rendered_html(self, job_id: str, html: str) -> dict[str, object]:
+        rendered = html.encode("utf-8")
+        metadata: dict[str, object] = {
+            "body_bytes": len(rendered),
+            "content_type": "text/html; charset=utf-8",
+            "sha256": hashlib.sha256(rendered).hexdigest(),
+        }
+        if len(rendered) > MAX_RENDERED_ARTIFACT_BYTES:
+            metadata["artifact_omitted_reason"] = "RENDERED_HTML_EXCEEDS_10MB_LIMIT"
+            return metadata
+        evidence_dir = self.paths.evidence_dir / job_id
+        evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        evidence_dir.chmod(0o700)
+        artifact_path = evidence_dir / "rendered.html"
+        artifact_path.write_bytes(rendered)
+        artifact_path.chmod(0o600)
+        metadata["artifact_path"] = str(artifact_path)
+        return metadata
 
     def _run_browser(
         self,
@@ -881,6 +903,8 @@ class BrowserExecutor:
                     "browser_process_id": browser_process_id,
                     "browser_session_id": browser_session_id,
                 }
+                if not inspect_mode and not use_mode:
+                    result.update(self._persist_rendered_html(job_id, page.content()))
                 if use_mode:
                     result["actions"] = action_results
 

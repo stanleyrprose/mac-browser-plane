@@ -79,6 +79,8 @@ C1 JS/DOM render. This surface does not click or type.
 
 Engine routing is internal. Ephemeral AUTO C1 may use Lightpanda then safe Chrome fallback; persistent C1 uses Chrome.
 
+When C1 executes with Chrome, the final rendered DOM is persisted as a private `rendered.html` evidence artifact when its UTF-8 size is at most 10 MB. The result includes `artifact_path`, `body_bytes`, `content_type`, and `sha256`. If the DOM exceeds that bound, C1 keeps its existing success semantics, omits the artifact, and returns `artifact_omitted_reason=RENDERED_HTML_EXCEEDS_10MB_LIMIT`. Callers must treat `artifact_path` as a local/private runtime path rather than a public download URL.
+
 ### `browser_inspect`
 
 C2 read-only Chrome diagnostics.
