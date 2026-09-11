@@ -35,7 +35,7 @@ There is no HTTP/WebSocket MCP listener.
 
 ## 3. MCP tools
 
-Current surface: exactly **9 tools**.
+Current local surface: exactly **10 tools**.
 
 ### `browser_capabilities`
 
@@ -47,7 +47,18 @@ Returns the machine-readable capability/security/engine-routing manifest.
 
 Arguments: none.
 
-Runs readiness checks and returns the report plus the private report path. It does not start a second worker.
+Runs readiness checks and returns the report plus the private report path. It does not start a second worker. The report includes `artifact_ocr` readiness and the active Tesseract/model profile.
+
+### `artifact_ocr`
+
+Networkless Burmese/English OCR over an already-acquired Browser Plane evidence image. This is an orthogonal artifact-processing capability, not C4.
+
+| Field | Type | Default | Bounds / meaning |
+| --- | --- | --- | --- |
+| `artifact_path` | string | required | absolute or evidence-relative path that must resolve inside the runtime evidence directory |
+| `psm` | int | 6 | one of `4`, `6`, `11` |
+
+P0 accepts only PNG/JPEG images up to 25 MB. Tesseract runs fixed `mya+eng`, preferring runtime-local `tessdata_best`. The result includes input SHA-256, reconstructed text/lines, bounding boxes and confidence. It performs no network I/O. OCR output is evidence enrichment only: source-specific logic must cross-check critical identifiers, dates, quantities and actions before they become canonical business fields. P0 is local-only and is not authorized through the current SignalForge Provider contract.
 
 ### `browser_fetch`
 

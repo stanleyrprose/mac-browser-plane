@@ -13,6 +13,7 @@ C1 Render              COMPLETE
 C2 Read-only Inspect   COMPLETE
 C3 Browser Use         COMPLETE
 C3 Semantic Targeting  COMPLETE
+Artifact OCR           P0 COMPLETE (local-only)
 ```
 
 The primary browser interaction tool is:
@@ -71,6 +72,7 @@ C0 -> browser_fetch
 C1 -> browser_render
 C2 -> browser_inspect
 C3 -> browser_use
+Artifact evidence OCR -> artifact_ocr
 ```
 
 Do not assume a web task is limited to plain HTTP acquisition when `mac-browser-plane` is available.

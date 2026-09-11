@@ -20,9 +20,10 @@ C0 Fetch               -> browser_fetch
 C1 Render              -> browser_render
 C2 Read-only Inspect   -> browser_inspect
 C3 Browser Use         -> browser_use
+Artifact OCR           -> artifact_ocr
 ```
 
-C0–C3 are COMPLETE. C3 Semantic Targeting is COMPLETE.
+C0–C3 are COMPLETE. C3 Semantic Targeting is COMPLETE. `artifact_ocr` is an orthogonal local artifact-processing capability, not C4: P0 accepts only runtime-owned PNG/JPEG evidence, runs fixed Burmese+English OCR without network access, and returns evidence enrichment that must be source-cross-checked before critical business fields are trusted. It is not enabled in the SignalForge remote Provider contract.
 
 Internal engine routing is transparent to callers: C0 uses system `curl`; ephemeral C1 prefers Lightpanda when installed and safely falls back to Chrome; persistent-profile C1, all C2 diagnostics, and ordinary AUTO C3 Browser Use remain Chrome. Camoufox is the fourth optional anti-detection engine for selective ephemeral C1/C3 jobs only; AUTO never promotes to Camoufox without explicit/source evidence, and Camoufox has no automatic cross-engine replay fallback. Do not bypass `mac-browser-plane` to call Lightpanda or Camoufox MCP/server surfaces directly. Machine-readable routing truth is in `src/browser_plane/capabilities.json`; rationale is in `docs/LIGHTPANDA_ENGINE_ROUTING.md` and `docs/CAMOUFOX_ENGINE_ROUTING.md`.
 

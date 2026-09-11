@@ -28,6 +28,8 @@
     "persistent_profile": true,
     "screenshot": true,
     "binary_artifact": true,
+    "artifact_ocr": true,
+    "artifact_ocr_signalforge_provider_authorized": false,
     "remote_invocation": true,
     "headed_human_takeover": false,
     "c3_actions": [
@@ -48,6 +50,24 @@
       "text_target"
     ],
     "c3_planning": "external_caller"
+  },
+  "artifact_processing": {
+    "ocr": {
+      "tool": "artifact_ocr",
+      "engine": "tesseract",
+      "languages": ["mya", "eng"],
+      "preferred_model_profile": "tessdata_best",
+      "accepted_inputs": ["image/png", "image/jpeg"],
+      "input_scope": "runtime_evidence_only",
+      "pdf_input": false,
+      "network_access": false,
+      "local_mcp_authorized": true,
+      "codexpro_bridge_authorized": true,
+      "signalforge_provider_authorized": false,
+      "allowed_psm": [4, 6, 11],
+      "max_input_bytes": 26214400,
+      "result_semantics": "evidence_enrichment_only_critical_fields_require_source_cross_check"
+    }
   },
   "engine_routing": {
     "policy": "auto_v2",
@@ -121,7 +141,8 @@
       "C0_FETCH": "browser_fetch",
       "C1_RENDER": "browser_render",
       "C2_INSPECT": "browser_inspect",
-      "C3_BROWSER_USE": "browser_use"
+      "C3_BROWSER_USE": "browser_use",
+      "ARTIFACT_OCR": "artifact_ocr"
     },
     "specialized_consumers": {
       "wechat_mp_archive": {

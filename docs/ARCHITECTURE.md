@@ -64,7 +64,7 @@ The runtime is not:
 
 `mac-browser-mcp` is stdio-only. The MCP process is an adapter over the existing JobStore/worker and does not become a second Browser worker.
 
-The current public MCP surface contains nine tools: capabilities, doctor, fetch, render, inspect, browser use, status, result, cancel.
+The current local MCP surface contains ten tools: capabilities, doctor, artifact OCR, fetch, render, inspect, browser use, status, result, cancel. `artifact_ocr` is local-only in P0 and is not authorized through the SignalForge Provider contract.
 
 ### 4.3 SignalForge Provider Agent
 
@@ -114,6 +114,16 @@ No Browser, MCP, CDP, or Provider API listener is opened on the Mac. Remote auth
 - screenshots/downloads remain runtime evidence;
 - no embedded planner;
 - failure/cancellation can mark `partial_effect_possible` when prior interactions may have had effects.
+
+### Artifact OCR (orthogonal to C0-C3)
+
+- local synchronous processing of an already-acquired runtime evidence artifact;
+- P0 accepts PNG/JPEG only and never performs network I/O;
+- Tesseract runs fixed `mya+eng` recognition, preferring runtime-local `tessdata_best` weights;
+- the input path must resolve inside the Browser Plane evidence directory;
+- output includes input SHA-256, reconstructed lines, bounding boxes and confidence;
+- OCR output is evidence enrichment only: critical identifiers, dates, quantities and business actions require source-specific cross-checking before canonical use;
+- P0 is not exposed through the SignalForge Provider Invocation Contract and is deliberately not named C4.
 
 ## 6. Engine routing
 

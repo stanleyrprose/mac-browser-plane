@@ -13,6 +13,7 @@ from mcp import Client, StdioServerParameters
 AUTHORIZED_TOOLS = {
     "browser_capabilities",
     "browser_doctor",
+    "artifact_ocr",
     "browser_fetch",
     "browser_render",
     "browser_use",
