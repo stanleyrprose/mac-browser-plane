@@ -99,6 +99,8 @@ class OCRContractTests(unittest.TestCase):
                 "EVIDENCE_ENRICHMENT_ONLY_CRITICAL_FIELDS_REQUIRE_SOURCE_CROSS_CHECK",
             )
             ocr_command = run.call_args_list[0].args[0]
+            self.assertIn("tessedit_create_tsv=1", ocr_command)
+            self.assertNotIn("tsv", ocr_command)
             self.assertNotIn("http://", " ".join(ocr_command))
             self.assertNotIn("https://", " ".join(ocr_command))
 

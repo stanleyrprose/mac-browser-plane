@@ -211,7 +211,7 @@ def ocr_artifact(paths: RuntimePaths, artifact_path: str, *, psm: int = 6) -> di
     command = [str(tesseract), str(image_path), "stdout"]
     if tessdata_dir is not None:
         command.extend(["--tessdata-dir", str(tessdata_dir)])
-    command.extend(["-l", "+".join(_LANGUAGES), "--psm", str(psm), "tsv"])
+    command.extend(["-l", "+".join(_LANGUAGES), "--psm", str(psm), "-c", "tessedit_create_tsv=1"])
 
     try:
         proc = subprocess.run(
