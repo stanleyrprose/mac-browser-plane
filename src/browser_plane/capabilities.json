@@ -14,6 +14,8 @@
     "c0_fetch": true,
     "c0_raw_artifact": true,
     "c1_render": true,
+    "c1_rendered_dom_artifact": true,
+    "c1_rendered_dom_artifact_max_bytes": 10000000,
     "c1_generic_interaction": false,
     "c2_readonly_inspect": true,
     "c3_browser_use": true,
@@ -120,6 +122,14 @@
       "C1_RENDER": "browser_render",
       "C2_INSPECT": "browser_inspect",
       "C3_BROWSER_USE": "browser_use"
+    },
+    "specialized_consumers": {
+      "wechat_mp_archive": {
+        "repo": "stanleyrprose/wechat-mp-archive",
+        "trigger_host": "mp.weixin.qq.com",
+        "scope": "known_public_article_urls",
+        "pipeline": "C1_CHROME_RENDERED_DOM -> article Markdown/HTML/images/metadata"
+      }
     }
   }
 }

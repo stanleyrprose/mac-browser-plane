@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.resources
+import json
 import stat
 import tempfile
 import unittest
@@ -31,6 +33,15 @@ def make_runtime(tmp: str) -> tuple[RuntimePaths, RuntimeDB, JobStore]:
 
 
 class RenderedArtifactTests(unittest.TestCase):
+    def test_capability_manifest_advertises_rendered_dom_and_wechat_consumer(self) -> None:
+        resource = importlib.resources.files("browser_plane").joinpath("capabilities.json")
+        manifest = json.loads(resource.read_text(encoding="utf-8"))
+        self.assertTrue(manifest["capabilities"]["c1_rendered_dom_artifact"])
+        self.assertEqual(manifest["capabilities"]["c1_rendered_dom_artifact_max_bytes"], 10_000_000)
+        consumer = manifest["discovery"]["specialized_consumers"]["wechat_mp_archive"]
+        self.assertEqual(consumer["trigger_host"], "mp.weixin.qq.com")
+        self.assertEqual(consumer["repo"], "stanleyrprose/wechat-mp-archive")
+
     def test_c1_rendered_html_artifact_is_private_and_integrity_bound(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths, db, _ = make_runtime(tmp)
