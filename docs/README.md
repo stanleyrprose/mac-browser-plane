@@ -59,6 +59,7 @@ Examples:
 - `LOCAL_AGENT_MCP_ADAPTER_V0-LIVE-CLOSURE-2026-09-05.md`
 - `PIC-R4-PRODUCTION-CLOSURE-2026-09-08.md`
 - `LIGHTPANDA-C1-PRODUCTION-CLOSURE-2026-09-08.md`
+- `ARTIFACT-OCR-P0-PRODUCTION-CLOSURE-2026-09-11.md`
 
 Dated closure files should remain immutable except for factual errata. They document what was accepted at that time; they are not a place to continuously rewrite current state.
 

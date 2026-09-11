@@ -5,17 +5,19 @@
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN  
 **Branch:** `main`  
 **R1 baseline status:** **AUTHORIZED R1 OPERATIONAL SCOPE COMPLETE**  
-**Current post-R1 production status:** **C0–C3 + semantic targeting + Lightpanda + selective Camoufox + PIC v1 Provider production COMPLETE**  
+**Current post-R1 production status:** **C0–C3 + semantic targeting + Lightpanda + selective Camoufox + local Artifact OCR P0 + PIC v1 Provider production COMPLETE**  
 **R1 closure:** `docs/R1-OPERATIONAL-BASELINE-CLOSURE-2026-09-04.md`
 
-## Current verification snapshot — 2026-09-09
+## Current verification snapshot — 2026-09-11
 
-- [x] full source regression suite: **56/56 PASS**
+- [x] full source regression suite: **65/65 PASS**
 - [x] `browserctl doctor = READY`
 - [x] SQLite integrity `ok`, WAL enabled, synchronous FULL, busy timeout 5000
 - [x] Chrome available
 - [x] Lightpanda optional engine installed/ready
 - [x] Camoufox optional engine package/browser asset installed/ready
+- [x] Artifact OCR ready: Tesseract `5.5.3`, runtime-local `tessdata_best`, fixed `mya+eng`
+- [x] real MTE evidence MCP smoke: 20 OCR lines, mean confidence `79.22`, expected SHA-256, date/time/tonnage recovered
 - [x] stale Profile Leases: `[]`
 - [x] Browser Process Registry ownership residue: `[]`
 

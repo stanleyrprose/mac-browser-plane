@@ -2,7 +2,7 @@
 
 **Project:** Mac Browser Plane  
 **Current package version:** `0.1.0`  
-**Status date:** 2026-09-09  
+**Status date:** 2026-09-11  
 **Production state:** **OPERATIONAL / READY**
 
 ## 1. Current capability status
@@ -18,6 +18,7 @@
 | Persistent runtime profiles | COMPLETE |
 | SQLite/leases/process ownership/recovery | COMPLETE |
 | Local MCP stdio adapter | COMPLETE / OPERATIONAL |
+| Artifact OCR (`mya+eng`) | P0 COMPLETE / LOCAL + CODEXPRO |
 | Lightpanda ephemeral C1 fast path | COMPLETE / OPTIONAL ENGINE |
 | Camoufox selective ephemeral C1/C3 | COMPLETE / OPTIONAL ENGINE |
 | SignalForge Provider `pull_ssh_v1` | COMPLETE / PRODUCTION ENABLED |
@@ -26,11 +27,11 @@
 | SEA/VPS browser egress | DEFERRED / NOT CURRENT NEED |
 | China browser egress | DEFERRED / NOT CURRENT NEED |
 
-## 2. Fresh verification — 2026-09-09
+## 2. Fresh verification — 2026-09-11
 
-Local source/runtime verification performed before the software-project documentation baseline:
+Local source/runtime verification after Artifact OCR P0 implementation:
 
-- full `unittest` discovery: **56/56 PASS**;
+- full source regression: **65/65 PASS**;
 - `browserctl doctor`: **READY**;
 - SQLite integrity: `ok`;
 - SQLite WAL: enabled;
@@ -39,6 +40,9 @@ Local source/runtime verification performed before the software-project document
 - Chrome: available;
 - Lightpanda: installed at `/opt/homebrew/bin/lightpanda`;
 - Camoufox Python/browser asset: available, browser `152.0.4-beta.30`;
+- Artifact OCR: Tesseract `5.5.3`, runtime-local `tessdata_best`, fixed `mya+eng`, ready;
+- real MTE official-image MCP smoke: expected SHA-256, `20` OCR lines, mean confidence `79.22`, date `2026-09-15`, time `08:30`, and approximately `6243` tons recovered;
+- local/CodexPro OCR invocation enabled; SignalForge Provider OCR authorization remains disabled;
 - stale Profile Leases: none;
 - Browser Process Registry ownership residue: none.
 
@@ -91,7 +95,8 @@ Camoufox has no automatic replay fallback. Lightpanda fallback is restricted to 
 - 2026-09-05: local Agent MCP Adapter v0 live closure;
 - 2026-09-08: PIC R4 SignalForge Provider production closure;
 - 2026-09-08: Lightpanda C1 production closure;
-- 2026-09-08: Camoufox selective engine production verification recorded.
+- 2026-09-08: Camoufox selective engine production verification recorded;
+- 2026-09-11: Artifact OCR P0 local/CodexPro production acceptance completed.
 
 See dated closure documents for evidence from each stage.
 
@@ -105,7 +110,7 @@ Do not expand the architecture merely because a capability could be added. Reope
 
 - real source requires regional egress that direct Mac egress cannot meet;
 - real source A/B proves Camoufox materially improves reliability;
-- a caller requires a new capability not expressible through the current 9-tool MCP surface;
+- a caller requires a new capability not expressible through the current 10-tool MCP surface;
 - human takeover becomes a real operational requirement;
 - autonomous Browser planning provides material value that cannot remain in the caller.
 

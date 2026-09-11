@@ -96,12 +96,12 @@ One Browser Runtime and one MCP contract are reused by all clients.
 
 | Client | Path | Current discovery | C3 live status |
 | --- | --- | --- | --- |
-| Cloud ChatGPT | `ChatGPT -> CodexPro -> mac-browser-mcp-call -> mac-browser-mcp` | current 9-tool contract | **PASS** (`browser_use` live verified) |
-| OpenClaw | direct local stdio to `mac-browser-mcp` | **9 tools** via `openclaw mcp probe mac-browser-plane` | **PASS** (`browser_use` live verified to IANA) |
-| Hermes | direct local stdio to `mac-browser-mcp` | **9 tools** via `hermes mcp test mac-browser-plane` | **PASS** (`browser_use` one-shot live verified to IANA) |
+| Cloud ChatGPT | `ChatGPT -> CodexPro -> mac-browser-mcp-call -> mac-browser-mcp` | current **10-tool** local contract | **PASS** (`browser_use` and `artifact_ocr` live verified) |
+| OpenClaw | direct local stdio to `mac-browser-mcp` | current MCP exposes **10 tools**; prior client probe recorded 9 before OCR P0 | **PASS** (`browser_use` live verified to IANA; OCR available by MCP discovery) |
+| Hermes | direct local stdio to `mac-browser-mcp` | current MCP exposes **10 tools**; prior client test recorded 9 before OCR P0 | **PASS** (`browser_use` one-shot live verified to IANA; OCR available by MCP discovery) |
 | Codex CLI/Desktop config | direct local stdio to `mac-browser-mcp` | enabled and points at the production runtime | **CONFIG READY**; the latest agent-run recheck was blocked before tool execution by the Codex provider usage quota, not by MCP transport |
 
-The historical 8-tool verification records below remain valid for the pre-C3 baseline. The current production contract is 9 tools because M3B added `browser_use`.
+The historical 8-tool verification records below remain valid for the pre-C3 baseline, and the later 9-tool records remain valid for the pre-OCR C3 baseline. The current local production contract is 10 tools because Artifact OCR P0 added `artifact_ocr`; the SignalForge Provider contract remains narrower and does not authorize OCR yet.
 
 ## Initial bridge live verification — C0-C2 baseline
 
