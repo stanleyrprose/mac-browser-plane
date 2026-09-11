@@ -13,6 +13,7 @@ from .config import RuntimePaths
 from .db import JobStore, RuntimeDB
 from .doctor import Doctor
 from .models import Egress, JobSpec, JobState, ProfileMode, TERMINAL_STATES, TaskType
+from .ocr import OCRError, ocr_artifact
 
 
 mcp = MCPServer(
@@ -20,9 +21,10 @@ mcp = MCPServer(
     instructions=(
         "Local stdio-only adapter over the existing Mac Browser Plane runtime. "
         "Use browser_fetch for strict-TLS HTTP acquisition, browser_render for deterministic "
-        "engine-routed JS/DOM rendering, browser_inspect for Chrome read-only diagnostics, and browser_use for "
-        "multi-step Playwright interaction with internal engine routing. Arbitrary JavaScript, raw CDP, and remote invocation "
-        "are not available."
+        "engine-routed JS/DOM rendering, browser_inspect for Chrome read-only diagnostics, browser_use for "
+        "multi-step Playwright interaction with internal engine routing, and artifact_ocr for networkless Burmese/English "
+        "OCR over runtime-owned evidence images. OCR output is evidence enrichment only; critical business fields require "
+        "source cross-checking. Arbitrary JavaScript and raw CDP are not available."
     ),
 )
 
@@ -282,6 +284,17 @@ def browser_doctor() -> dict[str, Any]:
     report = doctor.run()
     report["report_path"] = str(doctor.write_report(report))
     return report
+
+
+@mcp.tool()
+def artifact_ocr(artifact_path: str, psm: int = 6) -> dict[str, Any]:
+    """Extract Burmese/English OCR from a runtime-owned PNG/JPEG evidence artifact without network access."""
+    paths = RuntimePaths.discover()
+    paths.ensure()
+    try:
+        return ocr_artifact(paths, artifact_path, psm=psm)
+    except OCRError as exc:
+        raise ToolError(str(exc)) from exc
 
 
 @mcp.tool()

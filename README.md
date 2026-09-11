@@ -6,7 +6,7 @@ Mac Browser Plane is the browser execution runtime on the Mac mini. It gives aut
 
 **Status: OPERATIONAL / READY**
 
-As of **2026-09-09**, the current checkout passed the full source regression suite (**56/56 tests**) and `browserctl doctor` returned `READY` with SQLite integrity `ok`, Chrome/Lightpanda/Camoufox available, no stale profile leases, and no Browser Process Registry ownership residue.
+As of **2026-09-11**, the current checkout passed the full source regression suite (**65/65 tests**) and the installed runtime returned `browserctl doctor = READY` with SQLite integrity `ok`, Chrome/Lightpanda/Camoufox available, Artifact OCR ready on Tesseract 5.5.3 + runtime-local `tessdata_best` (`mya+eng`), no stale profile leases, and no Browser Process Registry ownership residue.
 
 The current machine-readable contract is `src/browser_plane/capabilities.json`.
 
@@ -18,7 +18,8 @@ The current machine-readable contract is `src/browser_plane/capabilities.json`.
 | C3 Browser Use | COMPLETE | `browser_use` |
 | C3 Semantic Targeting / ARIA Snapshot | COMPLETE | `browser_use` |
 | Local MCP adapter | OPERATIONAL | stdio `mac-browser-plane` |
-| SignalForge remote provider invocation | OPERATIONAL | `pull_ssh_v1` |
+| Artifact OCR (`mya+eng`) | P0 COMPLETE / LOCAL | `artifact_ocr` |
+| SignalForge remote provider invocation | OPERATIONAL | `pull_ssh_v1` (OCR not authorized yet) |
 | Autonomous embedded Browser Agent / LLM planner | DEFERRED | planning stays with caller |
 | Headed human takeover | DEFERRED | not exposed |
 
@@ -153,13 +154,14 @@ Production executable:
 ~/agent-browser-runtime/app/venv/bin/mac-browser-mcp
 ```
 
-The current MCP exposes nine tools: capabilities, doctor, fetch, render, inspect, browser use, job status, job result, and job cancel. It is stdio-only and does not start a network listener.
+The current MCP exposes ten tools: capabilities, doctor, artifact OCR, fetch, render, inspect, browser use, job status, job result, and job cancel. It is stdio-only and does not start a network listener. `artifact_ocr` is an orthogonal, networkless evidence-processing capability rather than a C4 browser level; P0 accepts only runtime-owned PNG/JPEG evidence and treats OCR output as enrichment, not authoritative business truth.
 
 Recommended discovery sequence:
 
 ```text
 browser_capabilities
 browser_doctor      # when readiness matters
+artifact_ocr        # orthogonal local evidence OCR (PNG/JPEG, mya+eng)
 browser_fetch       # C0
 browser_render      # C1
 browser_inspect     # C2

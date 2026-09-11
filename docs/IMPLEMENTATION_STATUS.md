@@ -5,17 +5,19 @@
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN  
 **Branch:** `main`  
 **R1 baseline status:** **AUTHORIZED R1 OPERATIONAL SCOPE COMPLETE**  
-**Current post-R1 production status:** **C0–C3 + semantic targeting + Lightpanda + selective Camoufox + PIC v1 Provider production COMPLETE**  
+**Current post-R1 production status:** **C0–C3 + semantic targeting + Lightpanda + selective Camoufox + local Artifact OCR P0 + PIC v1 Provider production COMPLETE**  
 **R1 closure:** `docs/R1-OPERATIONAL-BASELINE-CLOSURE-2026-09-04.md`
 
-## Current verification snapshot — 2026-09-09
+## Current verification snapshot — 2026-09-11
 
-- [x] full source regression suite: **56/56 PASS**
+- [x] full source regression suite: **65/65 PASS**
 - [x] `browserctl doctor = READY`
 - [x] SQLite integrity `ok`, WAL enabled, synchronous FULL, busy timeout 5000
 - [x] Chrome available
 - [x] Lightpanda optional engine installed/ready
 - [x] Camoufox optional engine package/browser asset installed/ready
+- [x] Artifact OCR ready: Tesseract `5.5.3`, runtime-local `tessdata_best`, fixed `mya+eng`
+- [x] real MTE evidence MCP smoke: 20 OCR lines, mean confidence `79.22`, expected SHA-256, date/time/tonnage recovered
 - [x] stale Profile Leases: `[]`
 - [x] Browser Process Registry ownership residue: `[]`
 
@@ -49,7 +51,7 @@
 - [x] bounded web URL guard
 - [x] no arbitrary JavaScript or raw CDP
 - [x] original v0 eight-tool local contract live-verified on 2026-09-05
-- [x] later C3 slice extends the same adapter to the current **nine-tool** surface
+- [x] later C3 slice extended the same adapter to nine tools; Artifact OCR P0 extends the local surface to **ten tools** without changing C0-C3 semantics
 
 Historical contract/closure:
 
@@ -63,7 +65,7 @@ Historical contract/closure:
 - [x] `force: true` supported only on the defined click/select escape hatches
 - [x] screenshot/download artifacts stay in private runtime evidence
 - [x] timeout/failure/cancel preserves `partial_effect_possible` when effects may have occurred
-- [x] production stdio MCP exposes exactly nine tools
+- [x] production stdio MCP exposes ten local tools after Artifact OCR P0; the remote Provider allowlist remains unchanged
 - [x] real-business acceptance performed on Myanmar/MPT/MPA/Trade Portal paths during implementation
 
 ## C3 Semantic Targeting / M3C
@@ -102,6 +104,16 @@ Contract/closure:
 Contract:
 
 - `docs/CAMOUFOX_ENGINE_ROUTING.md`
+
+## Artifact OCR P0
+
+- [x] orthogonal `artifact_ocr` local MCP capability; not C4
+- [x] runtime-evidence-only path confinement with symlink-safe resolution
+- [x] PNG/JPEG only, 25 MB bound, file-signature validation
+- [x] networkless Tesseract `mya+eng`; runtime-local `tessdata_best` preferred
+- [x] output carries input SHA-256, text, line boxes and confidence
+- [x] evidence-enrichment-only semantics; critical identifiers/dates/quantities require source cross-check
+- [x] PDF rasterization, automatic source routing and SignalForge remote Provider authorization remain outside P0
 
 ## PIC v1 R4 — SignalForge Provider Production
 

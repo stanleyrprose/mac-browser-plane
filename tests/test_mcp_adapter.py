@@ -147,6 +147,11 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.structured_content["provider_id"], "mac-mm-01")
         self.assertEqual(result.structured_content["local_agent_adapter"]["transport"], "stdio")
         self.assertTrue(result.structured_content["capabilities"]["remote_invocation"])
+        self.assertTrue(result.structured_content["capabilities"]["artifact_ocr"])
+        self.assertFalse(result.structured_content["capabilities"]["artifact_ocr_signalforge_provider_authorized"])
+        self.assertEqual(result.structured_content["artifact_processing"]["ocr"]["input_scope"], "runtime_evidence_only")
+        self.assertTrue(result.structured_content["artifact_processing"]["ocr"]["codexpro_bridge_authorized"])
+        self.assertFalse(result.structured_content["artifact_processing"]["ocr"]["signalforge_provider_authorized"])
 
     async def test_mcp_exposes_only_the_authorized_v0_tools(self) -> None:
         async with Client(mcp) as client:
@@ -157,6 +162,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
             {
                 "browser_capabilities",
                 "browser_doctor",
+                "artifact_ocr",
                 "browser_fetch",
                 "browser_render",
                 "browser_use",
@@ -182,7 +188,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
             async with Client(params) as client:
                 tools = await client.list_tools()
                 result = await client.call_tool("browser_capabilities", {})
-        self.assertEqual(len(tools.tools), 9)
+        self.assertEqual(len(tools.tools), 10)
         self.assertFalse(result.is_error)
         self.assertEqual(result.structured_content["local_agent_adapter"]["transport"], "stdio")
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from .config import RuntimePaths
 from .db import RuntimeDB
 from .leases import LeaseManager
+from .ocr import ocr_readiness
 from .processes import BrowserProcessRegistry
 
 
@@ -96,6 +97,9 @@ class Doctor:
             },
             degraded=True,
         )
+
+        ocr = ocr_readiness(self.paths)
+        add("artifact_ocr", bool(ocr["ready"]), ocr, degraded=True)
 
         stale = LeaseManager(self.db).list_stale_profiles()
         add("stale_profile_leases", not stale, stale, degraded=True)
