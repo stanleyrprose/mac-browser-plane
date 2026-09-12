@@ -127,6 +127,16 @@ class TranslationProviderTests(unittest.TestCase):
         self.assertIn("read-only", argv)
         self.assertIn("--ignore-user-config", argv)
         self.assertIn("--ignore-rules", argv)
+        for feature in (
+            "shell_tool",
+            "browser_use",
+            "browser_use_external",
+            "browser_use_full_cdp_access",
+            "computer_use",
+            "apps",
+            "plugins",
+        ):
+            self.assertIn(feature, argv)
         self.assertIn("--output-schema", argv)
         self.assertIn("gpt-5.6-luna", argv)
         self.assertNotIn("danger-full-access", argv)
