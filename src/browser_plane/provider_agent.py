@@ -14,6 +14,7 @@ from typing import Any, Protocol
 from urllib.parse import unquote, urlsplit
 
 from .mcp_call import _call_tool
+from .translation_provider import CodexOAuthTranslator, run_translation_once
 
 PROVIDER_ID = "mac-mm-01"
 CONTRACT_VERSION = 1
@@ -284,7 +285,13 @@ class SshProviderTransport:
         args += [self.host, command]
         return args
 
-    def _run(self, command: str, stdin: bytes | None = None) -> dict[str, Any]:
+    def _run(
+        self,
+        command: str,
+        stdin: bytes | None = None,
+        *,
+        unsupported_is_no_work: bool = False,
+    ) -> dict[str, Any]:
         proc = subprocess.run(
             self._argv(command),
             input=stdin,
@@ -292,14 +299,22 @@ class SshProviderTransport:
             check=False,
             timeout=self.timeout_seconds,
         )
-        if proc.returncode != 0:
-            raise ProviderAgentError(f"provider transport failed: rc={proc.returncode}")
         try:
             value = json.loads(proc.stdout.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ProviderAgentError("provider transport returned invalid JSON") from exc
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            value = None
+        if proc.returncode != 0:
+            if (
+                unsupported_is_no_work
+                and proc.returncode == 126
+                and isinstance(value, dict)
+                and value.get("status") == "DENY"
+                and "unsupported provider command" in str(value.get("error") or "")
+            ):
+                return {"status": "NO_WORK", "compatibility": "TRANSLATION_COMMAND_UNSUPPORTED"}
+            raise ProviderAgentError(f"provider transport failed: rc={proc.returncode}")
         if not isinstance(value, dict):
-            raise ProviderAgentError("provider transport JSON root must be object")
+            raise ProviderAgentError("provider transport returned invalid JSON")
         return value
 
     def claim(self) -> dict[str, Any]:
@@ -310,6 +325,15 @@ class SshProviderTransport:
 
     def fail(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._run("provider-fail-v1", canonical_json(payload))
+
+    def translation_claim(self) -> dict[str, Any]:
+        return self._run("translation-claim-v1", unsupported_is_no_work=True)
+
+    def translation_submit(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._run("translation-submit-v1", canonical_json(payload))
+
+    def translation_fail(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._run("translation-fail-v1", canonical_json(payload))
 
 
 class LocalMcpInvoker:
@@ -374,17 +398,24 @@ def main() -> None:
     args = _parser().parse_args()
     transport = SshProviderTransport(args.host, args.identity_file)
     invoker = LocalMcpInvoker()
+    translator = CodexOAuthTranslator()
     contract = load_contract(args.contract)
     try:
         while True:
+            translation_result = run_translation_once(transport=transport, translator=translator)
             result = run_once(transport=transport, invoker=invoker, contract=contract)
+            if args.once or translation_result.get("status") != "NO_WORK":
+                print(
+                    json.dumps({"ok": True, "translation_result": translation_result}, ensure_ascii=False, sort_keys=True),
+                    flush=True,
+                )
             if args.once or result.get("status") != "NO_WORK":
                 print(json.dumps({"ok": True, "result": result}, ensure_ascii=False, sort_keys=True), flush=True)
             if args.once:
                 return
-            delay = _poll_delay(result, args.interval_sec)
-            if delay:
-                time.sleep(delay)
+            if translation_result.get("status") != "NO_WORK" or result.get("status") != "NO_WORK":
+                continue
+            time.sleep(max(1.0, float(args.interval_sec)))
     except KeyboardInterrupt:
         return
     except Exception as exc:
