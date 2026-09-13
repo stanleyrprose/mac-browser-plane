@@ -17,7 +17,7 @@ ChatGPT Web
 -> mac-browser-mcp
 -> existing SQLite JobStore
 -> existing LaunchAgent worker
--> C0 / C1 / C2
+-> C0 / C1 / C2 / C3 / local Artifact OCR
 ```
 
 ## Why this path
@@ -43,11 +43,12 @@ mac-browser-mcp-call call browser_fetch \
   --args-json '{"url":"https://example.com"}'
 ```
 
-The bridge is intentionally not a generic MCP launcher. It resolves only the `mac-browser-mcp` executable in the same runtime environment and permits the current nine-tool Browser Plane MCP contract:
+The bridge is intentionally not a generic MCP launcher. It resolves only the `mac-browser-mcp` executable in the same runtime environment and permits the current ten-tool Browser Plane MCP contract:
 
 ```text
 browser_capabilities
 browser_doctor
+artifact_ocr
 browser_fetch
 browser_render
 browser_use
@@ -71,7 +72,7 @@ C3 Browser Use                  enabled
 C3 autonomous Browser Agent     disabled
 remote Browser API              none
 public MCP port                 none
-remote_invocation capability    false
+SignalForge pull-SSH invocation enabled, source/URL/capability allowlisted
 ```
 
 `mac-browser-mcp-call` is only a local MCP client. CodexPro remains the remote access/control boundary.

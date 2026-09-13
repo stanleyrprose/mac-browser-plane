@@ -13,6 +13,7 @@ def test_non_c0_evidence_removes_local_paths() -> None:
         "request": {
             "capability": "C2_INSPECT",
             "mcp_tool": "browser_inspect",
+            "max_bytes": 1_000_000,
             "request_sha256": "0" * 64,
         },
     }

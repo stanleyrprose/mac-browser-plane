@@ -241,6 +241,9 @@ def package_success(claim: dict[str, Any], mcp_payload: dict[str, Any]) -> bytes
     else:
         artifact = canonical_json({"job_id": job["job_id"], "state": job["state"], "result": _portable_result(result)})
         media_type = "application/json"
+    max_bytes = request.get("max_bytes")
+    if not isinstance(max_bytes, int) or len(artifact) > max_bytes:
+        raise ProviderAgentError("provider result artifact exceeds request max_bytes")
     final_url = result.get("url")
     if not isinstance(final_url, str) or not final_url:
         raise ProviderAgentError("Browser result final URL missing")
