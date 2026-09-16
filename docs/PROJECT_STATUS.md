@@ -70,7 +70,12 @@ Real-source checks established the escalation boundary before adding more mitmpr
 - C2 now derives bounded `api_candidates` from XHR/fetch metadata and excludes obvious analytics/captcha noise;
 - the ATOM smoke produced exactly one candidate, the official media API, with score `9`;
 - this establishes C2 as the default API-discovery layer and keeps mitmproxy as a deeper second-stage diagnostic only when C2 evidence is insufficient;
-- full repository regression after the C2 enhancement: **83/83 PASS** using the project `.venv`.
+- full repository regression after the C2 enhancement: **83/83 PASS** using the project `.venv`;
+- PR `#47` was squash-merged as `cdc6066463f66515d73e680f10007ce24207baa5` and installed into `~/agent-browser-runtime/app` using the reviewed production install/update path;
+- the user LaunchAgent was reinstalled/restarted successfully and production `browserctl doctor` returned **READY**;
+- production manifest reports `c2_api_candidates=true`, and production job `05ca8819-8d71-4dfe-ba73-daffefd3b8a4` returned exactly the ATOM media API candidate with HTTP `200`, `application/json`, score `9`;
+- post-smoke doctor reported no stale profile leases and no Browser Process Registry ownership residue;
+- production `browserctl trace doctor` remains **READY / default OFF / loopback only**.
 
 ## 3. Production invocation modes
 
