@@ -4,6 +4,17 @@ This changelog summarizes material product/runtime milestones. Detailed acceptan
 
 ## Unreleased
 
+### Added
+
+- Added pinned `nodriver==0.50.3` as an explicit-only, ephemeral C1 direct-CDP Chromium engine.
+- Reused the existing Browser Process Registry, Control Lease, cancellation/timeout cleanup, and evidence paths; no new daemon, listener, MCP surface, or state authority was introduced.
+- Added `nodriver_optional` doctor visibility and a live C1 smoke fixture.
+
+### Safety / architecture
+
+- Kept nodriver out of AUTO routing with no automatic cross-engine replay.
+- Kept persistent profiles, C2 diagnostics, and C3 Browser Use unsupported on nodriver v1 pending real-source A/B evidence and full C3 contract parity.
+
 ### Documentation
 
 - Established a software-project documentation baseline with canonical architecture, development, testing, deployment, security, operations, project-status, and decision-index documents.

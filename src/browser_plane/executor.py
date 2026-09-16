@@ -210,7 +210,12 @@ class BrowserExecutor:
             raise CapabilityError("M1 supports direct egress only")
         if spec.task_type == TaskType.AGENT:
             raise CapabilityError("autonomous Browser Agent is not installed")
-        if spec.task_type in {TaskType.AUTOMATE, TaskType.INSPECT, TaskType.USE} and not self._playwright_available():
+        nodriver_c1 = spec.engine == BrowserEngine.NODRIVER and spec.task_type == TaskType.AUTOMATE
+        if (
+            spec.task_type in {TaskType.AUTOMATE, TaskType.INSPECT, TaskType.USE}
+            and not nodriver_c1
+            and not self._playwright_available()
+        ):
             raise CapabilityError("Playwright Python package is not installed")
 
     def run_one(self, row: dict[str, object]) -> bool:
@@ -486,6 +491,17 @@ class BrowserExecutor:
             }
             return result
 
+        if selected == BrowserEngine.NODRIVER:
+            result = self._run_nodriver(job_id, spec)
+            result["engine_route"] = {
+                "requested": spec.engine.value,
+                "selected": BrowserEngine.NODRIVER.value,
+                "attempted": [BrowserEngine.NODRIVER.value],
+                "reason": reason,
+                "fallback": None,
+            }
+            return result
+
         if selected == BrowserEngine.CAMOUFOX:
             result = self._run_camoufox(job_id, spec, use_mode=use_mode)
             result["engine_route"] = {
@@ -523,6 +539,20 @@ class BrowserExecutor:
         if spec.engine == BrowserEngine.CHROME:
             return BrowserEngine.CHROME, "explicit_chrome"
 
+        if spec.engine == BrowserEngine.NODRIVER:
+            ineligible = self._nodriver_ineligible_reason(
+                spec,
+                inspect_mode=inspect_mode,
+                use_mode=use_mode,
+            )
+            if ineligible:
+                raise CapabilityError(f"nodriver is not eligible for this job: {ineligible}")
+            if not self._nodriver_available():
+                raise CapabilityError(
+                    "nodriver was explicitly requested but its package/Chrome runtime is not installed"
+                )
+            return BrowserEngine.NODRIVER, "explicit_nodriver"
+
         if spec.engine == BrowserEngine.CAMOUFOX:
             ineligible = self._camoufox_ineligible_reason(spec, inspect_mode=inspect_mode)
             if ineligible:
@@ -544,6 +574,154 @@ class BrowserExecutor:
         if self._lightpanda_binary() is None:
             return BrowserEngine.CHROME, "lightpanda_unavailable"
         return BrowserEngine.LIGHTPANDA, "auto_lightpanda_eligible"
+
+    @staticmethod
+    def _nodriver_ineligible_reason(
+        spec: JobSpec,
+        *,
+        inspect_mode: bool,
+        use_mode: bool,
+    ) -> str | None:
+        if inspect_mode or spec.task_type == TaskType.INSPECT:
+            return "c2_requires_chrome_diagnostics"
+        if spec.profile_mode != ProfileMode.EPHEMERAL:
+            return "nodriver_v1_ephemeral_only"
+        if use_mode or spec.task_type == TaskType.USE:
+            return "c3_nodriver_not_supported_v1"
+        if spec.task_type != TaskType.AUTOMATE:
+            return "task_not_nodriver_routable"
+        return None
+
+    @staticmethod
+    def _nodriver_available() -> bool:
+        try:
+            import nodriver  # noqa: F401
+        except ImportError:
+            return False
+        chrome = Path(
+            os.environ.get(
+                "BROWSER_PLANE_CHROME",
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            )
+        )
+        return chrome.exists()
+
+    def _run_nodriver(self, job_id: str, spec: JobSpec) -> dict[str, object]:
+        if not self._nodriver_available():
+            raise CapabilityError("nodriver Python package/Chrome runtime is not installed")
+        ineligible = self._nodriver_ineligible_reason(spec, inspect_mode=False, use_mode=False)
+        if ineligible:
+            raise CapabilityError(f"nodriver is not eligible for this job: {ineligible}")
+
+        with tempfile.TemporaryDirectory(prefix="nodriver-", dir=self.paths.run_dir) as tmp:
+            request_path = Path(tmp) / "request.json"
+            response_path = Path(tmp) / "response.json"
+            request_path.write_text(
+                json.dumps(
+                    {
+                        "job_id": job_id,
+                        "url": spec.url,
+                        "max_run_sec": spec.max_run_sec,
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            request_path.chmod(0o600)
+
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "browser_plane.nodriver_runner",
+                    "--request",
+                    str(request_path),
+                    "--response",
+                    str(response_path),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,
+                env=env,
+            )
+            browser_process_id: str | None = None
+            control_epoch: int | None = None
+            heartbeat_stop = threading.Event()
+            heartbeat_thread: threading.Thread | None = None
+            browser_session_id = str(uuid.uuid4())
+            try:
+                browser_process_id = self.processes.register(
+                    pid=proc.pid,
+                    job_id=job_id,
+                    runtime_kind="C1_NODRIVER",
+                    profile_id=None,
+                    user_data_dir=None,
+                )
+                control_epoch = self.leases.acquire_control(
+                    browser_session_id,
+                    job_id,
+                    "NODRIVER_RENDER",
+                )
+                if control_epoch is None:
+                    raise RuntimeError("control lease unavailable")
+
+                def heartbeat() -> None:
+                    while not heartbeat_stop.wait(1.0):
+                        if control_epoch is not None:
+                            self.leases.heartbeat_control(browser_session_id, job_id, control_epoch)
+                        if browser_process_id is not None:
+                            self.processes.mark_seen(browser_process_id)
+                        current = self.jobs.get(job_id)
+                        if current and current["state"] == JobState.CANCEL_REQUESTED.value:
+                            if browser_process_id is not None:
+                                self.processes.terminate_owned(browser_process_id, grace_sec=3.0)
+                            return
+
+                heartbeat_thread = threading.Thread(
+                    target=heartbeat,
+                    name=f"nodriver-heartbeat-{job_id}",
+                    daemon=True,
+                )
+                heartbeat_thread.start()
+                try:
+                    _, stderr = proc.communicate(timeout=spec.max_run_sec + 15)
+                except subprocess.TimeoutExpired as exc:
+                    if browser_process_id is not None:
+                        self.processes.terminate_owned(browser_process_id, grace_sec=3.0)
+                    try:
+                        _, stderr = proc.communicate(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        stderr = "nodriver runner did not exit after termination"
+                    raise TimeoutError("nodriver exceeded Browser Plane execution deadline") from exc
+
+                if proc.returncode != 0:
+                    raise RuntimeError(
+                        f"nodriver runner failed rc={proc.returncode}: {(stderr or '').strip()[:1000]}"
+                    )
+                if not response_path.exists():
+                    raise RuntimeError("nodriver runner exited without a response")
+                payload = json.loads(response_path.read_text(encoding="utf-8"))
+                if not isinstance(payload, dict):
+                    raise RuntimeError("nodriver runner returned a non-object response")
+                payload["browser_process_id"] = browser_process_id
+                payload["browser_session_id"] = browser_session_id
+                return payload
+            finally:
+                heartbeat_stop.set()
+                if heartbeat_thread is not None:
+                    heartbeat_thread.join(timeout=1.0)
+                if control_epoch is not None:
+                    self.leases.release_control(browser_session_id, job_id, control_epoch)
+                if browser_process_id is not None:
+                    if proc.poll() is None:
+                        self.processes.terminate_owned(browser_process_id, grace_sec=3.0)
+                    else:
+                        self.processes.mark_closed(browser_process_id)
+                elif proc.poll() is None:
+                    proc.terminate()
 
     @staticmethod
     def _camoufox_ineligible_reason(spec: JobSpec, *, inspect_mode: bool) -> str | None:
