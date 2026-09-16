@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import RuntimePaths
+from .content_quality import C1ContentQualityError, c1_content_quality_metadata
 from .db import RuntimeDB
 from .executor import BrowserExecutor
 
@@ -53,7 +54,9 @@ async def _wait_for_rendered_content(
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise RuntimeError("nodriver rendered body remained empty after bounded hydration wait")
+            raise C1ContentQualityError(
+                "nodriver C1 content quality gate failed: rendered body remained empty"
+            )
         await page.sleep(min(poll_interval_sec, remaining))
 
 
@@ -114,10 +117,10 @@ async def _run_async(request: dict[str, Any]) -> dict[str, object]:
             "title": title,
             "status": status,
             "elapsed_ms": elapsed_ms,
-            "content_ready_wait_ms": content_ready_wait_ms,
             "text_excerpt": body_text[:4000],
         }
         result.update(executor._persist_rendered_html(job_id, html))
+        result.update(c1_content_quality_metadata(body_text, wait_ms=content_ready_wait_ms))
         return result
     finally:
         browser.stop()

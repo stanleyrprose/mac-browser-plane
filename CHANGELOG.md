@@ -10,6 +10,7 @@ This changelog summarizes material product/runtime milestones. Detailed acceptan
 - Reused the existing Browser Process Registry, Control Lease, cancellation/timeout cleanup, and evidence paths; no new daemon, listener, MCP surface, or state authority was introduced.
 - Added `nodriver_optional` doctor visibility and a live C1 smoke fixture.
 - Added a bounded nodriver hydration quality poll: wait up to 5 seconds for non-empty rendered body text, record `content_ready_wait_ms`, and fail closed instead of accepting an empty-body HTTP 200.
+- Added a unified C1 content-quality gate across Lightpanda, Chrome, Camoufox, and nodriver: a C1 render must expose non-empty rendered body text before it can be reported as successful. AUTO Lightpanda quality failures use the existing side-effect-safe Chrome fallback; explicit alternative engines fail closed.
 
 ### Safety / architecture
 

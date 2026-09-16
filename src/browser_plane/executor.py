@@ -17,6 +17,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .config import RuntimePaths
+from .content_quality import c1_content_quality_metadata, require_nonempty_c1_body, wait_for_sync_c1_content
 from .db import JobStore, RuntimeDB
 from .leases import LeaseManager
 from .models import BrowserEngine, Egress, JobSpec, JobState, ProfileMode, TaskType
@@ -1004,6 +1005,7 @@ class BrowserExecutor:
 
             parser = _RenderedHTMLTextParser()
             parser.feed(content)
+            body_text = require_nonempty_c1_body(parser.body_text, engine="lightpanda")
             headers = payload.get("headers") if isinstance(payload.get("headers"), list) else []
             content_type = next(
                 (
@@ -1013,7 +1015,7 @@ class BrowserExecutor:
                 ),
                 None,
             )
-            return {
+            result = {
                 "engine": "c1-lightpanda",
                 "browser_engine": BrowserEngine.LIGHTPANDA.value,
                 "url": str(payload.get("url") or spec.url),
@@ -1022,10 +1024,12 @@ class BrowserExecutor:
                 "elapsed_ms": elapsed_ms,
                 "content_type": content_type,
                 "body_bytes": len(content.encode("utf-8")),
-                "text_excerpt": parser.body_text[:4000],
+                "text_excerpt": body_text[:4000],
                 "browser_process_id": browser_process_id,
                 "browser_session_id": browser_session_id,
             }
+            result.update(c1_content_quality_metadata(body_text, wait_ms=0))
+            return result
         finally:
             heartbeat_stop.set()
             if heartbeat_thread is not None:
@@ -1179,6 +1183,15 @@ class BrowserExecutor:
                 action_results: list[dict[str, object]] = []
                 if use_mode:
                     action_results = self._run_browser_actions(page, job_id, spec.actions)
+                c1_html: str | None = None
+                c1_body_text: str | None = None
+                c1_ready_wait_ms: int | None = None
+                if not inspect_mode and not use_mode:
+                    c1_html, c1_body_text, c1_ready_wait_ms = wait_for_sync_c1_content(
+                        page,
+                        engine="chrome",
+                        max_wait_sec=min(5.0, max(1.0, float(spec.max_run_sec))),
+                    )
                 elapsed_ms = int((time.monotonic() - started) * 1000)
                 status = response.status if response else None
                 for action_result in reversed(action_results):
@@ -1188,6 +1201,11 @@ class BrowserExecutor:
                 engine_name = "c3-browser-use" if use_mode else (
                     "c2-readonly-inspect" if inspect_mode else "c1-playwright"
                 )
+                text_excerpt = (
+                    c1_body_text[:4000]
+                    if c1_body_text is not None
+                    else page.locator("body").inner_text(timeout=5000)[:4000]
+                )
                 result: dict[str, object] = {
                     "engine": engine_name,
                     "browser_engine": BrowserEngine.CHROME.value,
@@ -1195,12 +1213,14 @@ class BrowserExecutor:
                     "title": page.title(),
                     "status": status,
                     "elapsed_ms": elapsed_ms,
-                    "text_excerpt": page.locator("body").inner_text(timeout=5000)[:4000],
+                    "text_excerpt": text_excerpt,
                     "browser_process_id": browser_process_id,
                     "browser_session_id": browser_session_id,
                 }
                 if not inspect_mode and not use_mode:
-                    result.update(self._persist_rendered_html(job_id, page.content()))
+                    assert c1_html is not None and c1_body_text is not None and c1_ready_wait_ms is not None
+                    result.update(self._persist_rendered_html(job_id, c1_html))
+                    result.update(c1_content_quality_metadata(c1_body_text, wait_ms=c1_ready_wait_ms))
                 if use_mode:
                     result["actions"] = action_results
 
