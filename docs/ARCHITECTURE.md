@@ -125,6 +125,18 @@ No Browser, MCP, CDP, or Provider API listener is opened on the Mac. Remote auth
 - OCR output is evidence enrichment only: critical identifiers, dates, quantities and business actions require source-specific cross-checking before canonical use;
 - P0 is not exposed through the SignalForge Provider Invocation Contract and is deliberately not named C4.
 
+### Network Trace P1 (internal operator diagnostic)
+
+- optional `mitmdump` subprocess, default OFF;
+- explicit host scope and loopback listener only;
+- registered in the existing Browser Process Registry for ownership-safe shutdown;
+- retains bounded response metadata only; no request/response bodies or query strings;
+- no system proxy mutation and no global CA installation;
+- not a browser engine, not C4, and not exposed through MCP or the SignalForge Provider contract;
+- current P1 proves bounded trace capture with a debug client; automatic Chrome proxy injection remains gated on a real source need.
+
+See `docs/NETWORK_TRACE_P1.md` for the operator contract and limitations.
+
 ## 6. Engine routing
 
 `BrowserEngine` is an internal execution choice, not a public MCP-level engine API.

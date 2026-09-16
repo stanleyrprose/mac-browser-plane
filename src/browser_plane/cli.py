@@ -15,6 +15,7 @@ from .config import RuntimePaths
 from .db import JobStore, RuntimeDB
 from .doctor import Doctor
 from .models import JobSpec, JobState, TERMINAL_STATES
+from .network_trace import TraceController
 from .worker import Worker
 
 
@@ -198,6 +199,38 @@ def cmd_capabilities(_: argparse.Namespace) -> int:
     return 0
 
 
+def _trace_controller() -> TraceController:
+    paths, db, _ = _runtime()
+    return TraceController(paths, db)
+
+
+def cmd_trace_doctor(_: argparse.Namespace) -> int:
+    report = _trace_controller().doctor()
+    _print(report)
+    return 0 if report["status"] == "READY" else 2
+
+
+def cmd_trace_start(args: argparse.Namespace) -> int:
+    try:
+        report = _trace_controller().start(args.host, args.port)
+    except (RuntimeError, ValueError) as exc:
+        _print({"error": "TRACE_START_FAILED", "detail": str(exc)})
+        return 2
+    _print(report)
+    return 0
+
+
+def cmd_trace_stop(_: argparse.Namespace) -> int:
+    report = _trace_controller().stop()
+    _print(report)
+    return 0 if report["status"] in {"STOPPED", "NOT_RUNNING"} else 2
+
+
+def cmd_trace_summary(_: argparse.Namespace) -> int:
+    _print(_trace_controller().summary())
+    return 0
+
+
 def _public_job(row: dict[str, Any]) -> dict[str, Any]:
     result = json.loads(row["result_json"]) if row.get("result_json") else None
     return {
@@ -260,6 +293,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("capabilities")
     p.set_defaults(func=cmd_capabilities)
+
+    trace = sub.add_parser("trace", help="bounded local network trace diagnostics")
+    trace_sub = trace.add_subparsers(dest="trace_command", required=True)
+
+    p = trace_sub.add_parser("doctor")
+    p.set_defaults(func=cmd_trace_doctor)
+
+    p = trace_sub.add_parser("start")
+    p.add_argument("--host", required=True, help="bare DNS name or IPv4 address to observe")
+    p.add_argument("--port", type=int, help="optional loopback proxy port")
+    p.set_defaults(func=cmd_trace_start)
+
+    p = trace_sub.add_parser("stop")
+    p.set_defaults(func=cmd_trace_stop)
+
+    p = trace_sub.add_parser("summary")
+    p.set_defaults(func=cmd_trace_summary)
 
     return parser
 
