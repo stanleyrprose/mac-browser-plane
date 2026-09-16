@@ -57,6 +57,7 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertFalse(manifest["network"]["china"])
         self.assertTrue(manifest["capabilities"]["c0_fetch"])
         self.assertTrue(manifest["capabilities"]["c1_render"])
+        self.assertTrue(manifest["capabilities"]["c1_content_quality_gate"])
         self.assertFalse(manifest["capabilities"]["c1_generic_interaction"])
         self.assertTrue(manifest["capabilities"]["c2_readonly_inspect"])
         self.assertTrue(manifest["capabilities"]["c2_api_candidates"])
@@ -73,6 +74,10 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertEqual(
             manifest["engine_routing"]["rules"]["c1_ephemeral_js_dom"],
             "lightpanda_then_chrome_fallback",
+        )
+        self.assertEqual(
+            manifest["engine_routing"]["rules"]["c1_content_quality"],
+            "nonempty_rendered_body_v1_fail_closed",
         )
         self.assertEqual(manifest["engine_routing"]["rules"]["c2_inspect"], "chrome")
         self.assertEqual(manifest["engine_routing"]["rules"]["c3_browser_use"], "chrome")

@@ -100,6 +100,19 @@ Real-source checks established the escalation boundary before adding more mitmpr
 - targeted regression: **36/36 PASS**; full repository regression: **90/90 PASS**;
 - routing decision is unchanged: no evidence yet justifies nodriver AUTO promotion; normal AUTO/Lightpanda remains preferred.
 
+### 2.5 unified C1 content-quality gate — 2026-09-16
+
+- real SignalForge-source A/B exposed false-success cases where an engine could report HTTP/navigation success with an empty rendered body: S21 Myanma Railways returned a 15-byte Lightpanda shell with zero text, S16 YCDC returned an 85-byte Lightpanda shell on one run, and S41 MYTEL/Viettel returned HTTP 200 with zero Camoufox body text on one run;
+- C1 now requires non-empty rendered body text through one source-independent gate (`nonempty_rendered_body_v1`) before success is reported;
+- Lightpanda validates its rendered text immediately; under AUTO an empty-body quality failure uses the existing side-effect-safe Chrome fallback, while explicit Lightpanda fails closed;
+- Chrome and Camoufox poll for useful rendered body text for at most 5 seconds after `DOMContentLoaded`; nodriver retains its bounded hydration poll but now reports the same quality metadata contract;
+- the gate does **not** classify non-empty stopped-site, login, access-denied, or challenge pages as business success; it only guarantees that Browser Plane returns truthful non-empty rendered content for the caller/source policy to classify;
+- fresh S21 explicit-Lightpanda verification now fails with `C1ContentQualityError` instead of false success; AUTO then attempts Chrome and truthfully fails on the same source's current network timeout;
+- fresh S16 verification returned a real 84 KB body through Lightpanda and passed the gate without unnecessary fallback, proving the gate preserves the fast path when content is actually present;
+- fresh S41 Camoufox verification waited about 1.56 seconds and recovered the real JSON body instead of the previous empty-body HTTP 200;
+- targeted regression: **40/40 PASS**; full repository regression: **94/94 PASS**;
+- no AUTO promotion, new engine, source-specific rule, provider-contract change, or TLS weakening was introduced.
+
 ## 3. Production invocation modes
 
 ### Local

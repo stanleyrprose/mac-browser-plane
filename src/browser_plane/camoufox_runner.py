@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import RuntimePaths
+from .content_quality import c1_content_quality_metadata, wait_for_sync_c1_content
 from .db import RuntimeDB
 from .executor import BrowserExecutor
 
@@ -47,6 +48,15 @@ def _run(request: dict[str, Any]) -> dict[str, object]:
         action_results: list[dict[str, object]] = []
         if use_mode:
             action_results = executor._run_browser_actions(page, job_id, actions)
+        c1_html: str | None = None
+        c1_body_text: str | None = None
+        c1_ready_wait_ms: int | None = None
+        if not use_mode:
+            c1_html, c1_body_text, c1_ready_wait_ms = wait_for_sync_c1_content(
+                page,
+                engine="camoufox",
+                max_wait_sec=min(5.0, max(1.0, float(max_run_sec))),
+            )
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
         status = response.status if response else None
@@ -56,6 +66,11 @@ def _run(request: dict[str, Any]) -> dict[str, object]:
                 break
 
         body = page.locator("body")
+        text_excerpt = (
+            c1_body_text[:4000]
+            if c1_body_text is not None
+            else body.inner_text(timeout=5000)[:4000]
+        )
         result: dict[str, object] = {
             "engine": "c3-camoufox-use" if use_mode else "c1-camoufox",
             "browser_engine": "camoufox",
@@ -63,10 +78,13 @@ def _run(request: dict[str, Any]) -> dict[str, object]:
             "title": page.title(),
             "status": status,
             "elapsed_ms": elapsed_ms,
-            "text_excerpt": body.inner_text(timeout=5000)[:4000],
+            "text_excerpt": text_excerpt,
         }
         if use_mode:
             result["actions"] = action_results
+        else:
+            assert c1_html is not None and c1_body_text is not None and c1_ready_wait_ms is not None
+            result.update(c1_content_quality_metadata(c1_body_text, wait_ms=c1_ready_wait_ms))
         return result
 
 

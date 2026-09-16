@@ -14,6 +14,7 @@
     "c0_fetch": true,
     "c0_raw_artifact": true,
     "c1_render": true,
+    "c1_content_quality_gate": true,
     "c1_rendered_dom_artifact": true,
     "c1_rendered_dom_artifact_max_bytes": 10000000,
     "c1_generic_interaction": false,
@@ -84,6 +85,7 @@
     "rules": {
       "c0_fetch": "curl",
       "c1_ephemeral_js_dom": "lightpanda_then_chrome_fallback",
+      "c1_content_quality": "nonempty_rendered_body_v1_fail_closed",
       "c1_persistent_profile": "chrome",
       "c2_inspect": "chrome",
       "c3_browser_use": "chrome",
