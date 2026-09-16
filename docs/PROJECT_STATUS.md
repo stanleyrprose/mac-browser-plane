@@ -2,7 +2,7 @@
 
 **Project:** Mac Browser Plane  
 **Current package version:** `0.1.0`  
-**Status date:** 2026-09-11  
+**Status date:** 2026-09-16
 **Production state:** **OPERATIONAL / READY**
 
 ## 1. Current capability status
@@ -19,6 +19,7 @@
 | SQLite/leases/process ownership/recovery | COMPLETE |
 | Local MCP stdio adapter | COMPLETE / OPERATIONAL |
 | Artifact OCR (`mya+eng`) | P0 COMPLETE / LOCAL + CODEXPRO |
+| Network Trace (`mitmdump`) | P1 COMPLETE / LOCAL OPERATOR DIAGNOSTIC / DEFAULT OFF |
 | Lightpanda ephemeral C1 fast path | COMPLETE / OPTIONAL ENGINE |
 | Camoufox selective ephemeral C1/C3 | COMPLETE / OPTIONAL ENGINE |
 | SignalForge Provider `pull_ssh_v1` | COMPLETE / PRODUCTION ENABLED |
@@ -47,6 +48,18 @@ Local source/runtime verification after Artifact OCR P0 implementation:
 - Browser Process Registry ownership residue: none.
 
 This is a health snapshot, not a guarantee that every external website is reachable or unchanged.
+
+### 2.1 Network Trace P1 verification — 2026-09-16
+
+- Homebrew `mitmproxy` 12.2.3 installed; `mitmdump` available at `/opt/homebrew/bin/mitmdump`;
+- `browserctl trace doctor`: READY, default OFF, loopback only;
+- bounded smoke used explicit host `httpbin.org` and loopback proxy `127.0.0.1:18080`;
+- `GET http://httpbin.org/json` returned HTTP 200 / `application/json`;
+- trace summary recorded exactly one flow and classified it `api_like=true`;
+- retained metadata excluded request/response bodies, query strings, and request headers;
+- trace process stopped through the existing Browser Process Registry ownership check;
+- no system proxy setting or CA trust store was changed;
+- full repo regression after P1: **79/79 PASS** using the project `.venv`.
 
 ## 3. Production invocation modes
 
