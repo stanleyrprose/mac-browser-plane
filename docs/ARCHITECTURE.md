@@ -103,8 +103,10 @@ No Browser, MCP, CDP, or Provider API listener is opened on the Mac. Remote auth
 - dedicated Chrome diagnostic session;
 - explicit CDP allowlist;
 - console/request/response/navigation/performance/accessibility diagnostics;
+- bounded `api_candidates` derived from XHR/fetch metadata, with response content type, analytics/captcha noise filtering, and sensitive query-value redaction;
+- API candidates are discovery evidence only and do not prove an endpoint is stable or authorized for production acquisition;
 - screenshot evidence;
-- no `Runtime.evaluate` or mutating CDP surface.
+- no response-body capture, `Runtime.evaluate`, or mutating CDP surface.
 
 ### C3 Browser Use
 

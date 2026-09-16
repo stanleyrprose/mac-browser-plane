@@ -61,6 +61,17 @@ This is a health snapshot, not a guarantee that every external website is reacha
 - no system proxy setting or CA trust store was changed;
 - full repo regression after P1: **79/79 PASS** using the project `.venv`.
 
+### 2.2 C2 API discovery verification — 2026-09-16
+
+Real-source checks established the escalation boundary before adding more mitmproxy integration:
+
+- Ministry of Industry S38 detail and listing pages expose business data directly in server-rendered HTML; no business-data API was observed, so Network Trace escalation is not justified for S38;
+- ATOM's JavaScript-heavy media UI exposed `GET /api/v1/medias?locale=en&year=2026&page=1` as same-origin XHR / HTTP 200 / `application/json` through ordinary C2 Inspect;
+- C2 now derives bounded `api_candidates` from XHR/fetch metadata and excludes obvious analytics/captcha noise;
+- the ATOM smoke produced exactly one candidate, the official media API, with score `9`;
+- this establishes C2 as the default API-discovery layer and keeps mitmproxy as a deeper second-stage diagnostic only when C2 evidence is insufficient;
+- full repository regression after the C2 enhancement: **83/83 PASS** using the project `.venv`.
+
 ## 3. Production invocation modes
 
 ### Local
