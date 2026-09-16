@@ -9,6 +9,7 @@ This changelog summarizes material product/runtime milestones. Detailed acceptan
 - Added pinned `nodriver==0.50.3` as an explicit-only, ephemeral C1 direct-CDP Chromium engine.
 - Reused the existing Browser Process Registry, Control Lease, cancellation/timeout cleanup, and evidence paths; no new daemon, listener, MCP surface, or state authority was introduced.
 - Added `nodriver_optional` doctor visibility and a live C1 smoke fixture.
+- Added a bounded nodriver hydration quality poll: wait up to 5 seconds for non-empty rendered body text, record `content_ready_wait_ms`, and fail closed instead of accepting an empty-body HTTP 200.
 
 ### Safety / architecture
 

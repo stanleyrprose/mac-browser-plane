@@ -24,6 +24,39 @@ def _write_private_json(path: Path, payload: dict[str, object]) -> None:
     path.chmod(0o600)
 
 
+def _string_value(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    remote_value = getattr(value, "value", None)
+    return remote_value if isinstance(remote_value, str) else ""
+
+
+async def _wait_for_rendered_content(
+    page: Any,
+    *,
+    max_wait_sec: float,
+    poll_interval_sec: float = 0.5,
+) -> tuple[str, str, int]:
+    started = time.monotonic()
+    deadline = started + max(0.0, max_wait_sec)
+    latest_html = ""
+
+    while True:
+        latest_html = await page.get_content()
+        body_value = await page.evaluate(
+            "document.body ? document.body.innerText : ''",
+            return_by_value=True,
+        )
+        body_text = _string_value(body_value)
+        if body_text.strip():
+            return latest_html, body_text, int((time.monotonic() - started) * 1000)
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("nodriver rendered body remained empty after bounded hydration wait")
+        await page.sleep(min(poll_interval_sec, remaining))
+
+
 async def _run_async(request: dict[str, Any]) -> dict[str, object]:
     import nodriver as uc
 
@@ -55,19 +88,16 @@ async def _run_async(request: dict[str, Any]) -> dict[str, object]:
     try:
         started = time.monotonic()
         page = await asyncio.wait_for(browser.get(url), timeout=max_run_sec)
-        await asyncio.wait_for(page.sleep(0.5), timeout=max_run_sec)
-        html = await asyncio.wait_for(page.get_content(), timeout=max_run_sec)
-        title = await asyncio.wait_for(
+        hydration_budget_sec = min(5.0, max(1.0, float(max_run_sec)))
+        html, body_text, content_ready_wait_ms = await asyncio.wait_for(
+            _wait_for_rendered_content(page, max_wait_sec=hydration_budget_sec),
+            timeout=hydration_budget_sec + 2.0,
+        )
+        title_value = await asyncio.wait_for(
             page.evaluate("document.title", return_by_value=True),
             timeout=max_run_sec,
         )
-        body_text = await asyncio.wait_for(
-            page.evaluate(
-                "document.body ? document.body.innerText : ''",
-                return_by_value=True,
-            ),
-            timeout=max_run_sec,
-        )
+        title = _string_value(title_value)
         status_value = await asyncio.wait_for(
             page.evaluate(
                 "performance.getEntriesByType('navigation')[0]?.responseStatus || null",
@@ -81,10 +111,11 @@ async def _run_async(request: dict[str, Any]) -> dict[str, object]:
             "engine": "c1-nodriver",
             "browser_engine": "nodriver",
             "url": str(page.url or url),
-            "title": title if isinstance(title, str) else "",
+            "title": title,
             "status": status,
             "elapsed_ms": elapsed_ms,
-            "text_excerpt": body_text[:4000] if isinstance(body_text, str) else "",
+            "content_ready_wait_ms": content_ready_wait_ms,
+            "text_excerpt": body_text[:4000],
         }
         result.update(executor._persist_rendered_html(job_id, html))
         return result

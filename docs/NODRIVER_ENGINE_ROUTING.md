@@ -95,6 +95,32 @@ On the Mac mini development runtime:
 
 This proves basic runtime compatibility with the current Python/Chrome environment. It does not prove material anti-bot advantage over Chrome or Camoufox.
 
+## Real-source A/B and hydration quality gate — 2026-09-16
+
+A production-runtime A/B used three public Myanmar telecom sources: ATOM Media, Mytel, and MPT Tenders. The first pass compared AUTO/Lightpanda, Chrome, nodriver, and Camoufox without changing routing.
+
+The important finding was not an anti-bot win. nodriver returned HTTP 200 on all three sources, but the original fixed `0.5s` post-navigation wait produced empty `text_excerpt` values and materially smaller rendered DOMs. On ATOM, for example, nodriver initially persisted about 6.9 KB while Lightpanda/Chrome persisted about 92 KB and contained the current press-release content. A direct timing diagnostic showed ATOM had not hydrated yet: after a bounded additional wait the page grew to about 93 KB and included the expected `Bright Futures` press release.
+
+The adapter therefore now uses a bounded hydration quality poll instead of a fixed sleep:
+
+- poll rendered HTML/body text at 0.5-second intervals;
+- stop immediately when non-empty body text is available;
+- wait at most 5 seconds after navigation;
+- fail closed if the body remains empty instead of reporting a misleading HTTP-200 success;
+- record `content_ready_wait_ms` in nodriver evidence.
+
+Real-source helper verification after the change:
+
+| Source | Rendered HTML | Body text | Content-ready wait |
+| --- | ---: | ---: | ---: |
+| ATOM Media | ~92.6 KB | 2,274 chars | 1,559 ms |
+| Mytel | ~21.3 KB | 137 chars | 1,538 ms |
+| MPT Tenders | ~56.3 KB | 166 chars | 518 ms |
+
+ATOM verification also recovered `Our Recent Press Release` and `Bright Futures`, proving the quality gate waits for useful hydrated content rather than merely a successful navigation.
+
+Current routing conclusion remains unchanged: the A/B set demonstrates runtime correctness after the hydration fix, but **does not demonstrate material incremental value over the normal AUTO/Lightpanda route**. nodriver therefore remains explicit-only.
+
 ## Promotion gate
 
 Do not add nodriver to AUTO routing or C3 until a real-source A/B set demonstrates incremental value. Promotion requires:
