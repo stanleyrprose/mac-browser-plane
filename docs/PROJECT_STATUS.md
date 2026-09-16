@@ -89,6 +89,17 @@ Real-source checks established the escalation boundary before adding more mitmpr
 - full repository regression after integration: **87/87 PASS**;
 - v1 remains explicit C1 only: no AUTO promotion, persistent profile, C2, C3, or automatic cross-engine replay.
 
+### 2.4 nodriver real-source A/B and hydration hardening — 2026-09-16
+
+- production-runtime A/B covered ATOM Media, Mytel, and MPT Tenders across AUTO/Lightpanda, Chrome, nodriver, and Camoufox;
+- the first nodriver pass returned HTTP 200 but empty body text on all three sources because the original fixed 0.5-second wait could finish before client-side hydration;
+- ATOM demonstrated the failure mode clearly: the early nodriver DOM was about 6.9 KB while Lightpanda/Chrome were about 92 KB and contained the current press-release content;
+- nodriver now polls for non-empty rendered body text at 0.5-second intervals for at most 5 seconds and fails closed if useful body content never appears;
+- the result records `content_ready_wait_ms` for evidence/debugging;
+- post-fix real-source helper verification recovered useful text on ATOM, Mytel, and MPT; ATOM recovered the current `Bright Futures` press-release content after about 1.56 seconds;
+- targeted regression: **36/36 PASS**; full repository regression: **90/90 PASS**;
+- routing decision is unchanged: no evidence yet justifies nodriver AUTO promotion; normal AUTO/Lightpanda remains preferred.
+
 ## 3. Production invocation modes
 
 ### Local
