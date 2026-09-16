@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
+from .c3_failure_corpus import C3FailureCorpus
 from .config import RuntimePaths
 from .db import JobStore, RuntimeDB
 from .doctor import Doctor
@@ -231,6 +232,21 @@ def cmd_trace_summary(_: argparse.Namespace) -> int:
     return 0
 
 
+def _c3_failure_corpus() -> C3FailureCorpus:
+    paths, db, _ = _runtime()
+    return C3FailureCorpus(paths, db)
+
+
+def cmd_corpus_summary(_: argparse.Namespace) -> int:
+    _print(_c3_failure_corpus().summary())
+    return 0
+
+
+def cmd_corpus_list(args: argparse.Namespace) -> int:
+    _print({"failures": _c3_failure_corpus().recent(args.limit)})
+    return 0
+
+
 def _public_job(row: dict[str, Any]) -> dict[str, Any]:
     result = json.loads(row["result_json"]) if row.get("result_json") else None
     return {
@@ -310,6 +326,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = trace_sub.add_parser("summary")
     p.set_defaults(func=cmd_trace_summary)
+
+    corpus = sub.add_parser("corpus", help="local C3 Browser Failure Corpus")
+    corpus_sub = corpus.add_subparsers(dest="corpus_command", required=True)
+
+    p = corpus_sub.add_parser("summary")
+    p.set_defaults(func=cmd_corpus_summary)
+
+    p = corpus_sub.add_parser("list")
+    p.add_argument("--limit", type=int, default=20)
+    p.set_defaults(func=cmd_corpus_list)
 
     return parser
 

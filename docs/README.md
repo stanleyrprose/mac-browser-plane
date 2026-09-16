@@ -34,6 +34,7 @@ For current behavior, use this order:
 | `DECISIONS.md` | decision index and rationale pointers |
 | `AI_CAPABILITY_ANNOUNCEMENT.md` | portable capability announcement for AI callers |
 | `SOURCE_CAPABILITY_MATRIX.md` | source/capability observations |
+| `C3_BROWSER_FAILURE_CORPUS.md` | local/private C3 failure evidence and replay-gate workflow |
 | `HOST_READINESS.md` | Mac host/power/login readiness boundary |
 
 ## Interface and engine contracts

@@ -477,6 +477,15 @@ browserctl capabilities
 
 Prints `capabilities.json`.
 
+### C3 Browser Failure Corpus
+
+```bash
+browserctl corpus summary
+browserctl corpus list --limit 20
+```
+
+The corpus is local/private runtime evidence under `$BROWSER_PLANE_HOME/state/c3-failure-corpus.jsonl`. It records sanitized C3 action execution failures and does not add automatic fallback or autonomous browser-agent behavior. See `C3_BROWSER_FAILURE_CORPUS.md`.
+
 ## 10. CLI JobSpec
 
 `browserctl submit/run` consumes a JSON JobSpec. Minimal examples live under `examples/`.

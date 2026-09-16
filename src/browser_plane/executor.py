@@ -16,6 +16,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
+from .c3_failure_corpus import C3FailureCorpus
 from .config import RuntimePaths
 from .content_quality import c1_content_quality_metadata, require_nonempty_c1_body, wait_for_sync_c1_content
 from .db import JobStore, RuntimeDB
@@ -205,6 +206,7 @@ class BrowserExecutor:
         self.jobs = JobStore(db)
         self.leases = LeaseManager(db)
         self.processes = BrowserProcessRegistry(db)
+        self.c3_failures = C3FailureCorpus(paths, db)
 
     def preflight(self, spec: JobSpec) -> None:
         if spec.egress not in {Egress.AUTO, Egress.DIRECT}:
@@ -1182,7 +1184,12 @@ class BrowserExecutor:
                 response = page.goto(spec.url, wait_until="domcontentloaded", timeout=spec.max_run_sec * 1000)
                 action_results: list[dict[str, object]] = []
                 if use_mode:
-                    action_results = self._run_browser_actions(page, job_id, spec.actions)
+                    action_results = self._run_browser_actions(
+                        page,
+                        job_id,
+                        spec.actions,
+                        browser_engine=BrowserEngine.CHROME.value,
+                    )
                 c1_html: str | None = None
                 c1_body_text: str | None = None
                 c1_ready_wait_ms: int | None = None
@@ -1318,6 +1325,8 @@ class BrowserExecutor:
         page: Any,
         job_id: str,
         actions: tuple[dict[str, Any], ...],
+        *,
+        browser_engine: str = BrowserEngine.CHROME.value,
     ) -> list[dict[str, object]]:
         if not actions:
             raise CapabilityError("C3 Browser Use requires at least one action")
@@ -1468,6 +1477,19 @@ class BrowserExecutor:
             except Exception as exc:
                 if isinstance(exc, CapabilityError):
                     raise
+                try:
+                    self.c3_failures.record_action_failure(
+                        page=page,
+                        job_id=job_id,
+                        browser_engine=browser_engine,
+                        step=index,
+                        action=action,
+                        exc=exc,
+                    )
+                except Exception:
+                    # Corpus capture is diagnostic-only and must never mask the
+                    # original C3 execution failure.
+                    pass
                 raise RuntimeError(f"browser action {index} ({kind or '<missing>'}) failed: {exc}") from exc
             results.append(item)
 
