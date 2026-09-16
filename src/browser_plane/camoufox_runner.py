@@ -47,7 +47,12 @@ def _run(request: dict[str, Any]) -> dict[str, object]:
         response = page.goto(url, wait_until="domcontentloaded", timeout=max_run_sec * 1000)
         action_results: list[dict[str, object]] = []
         if use_mode:
-            action_results = executor._run_browser_actions(page, job_id, actions)
+            action_results = executor._run_browser_actions(
+                page,
+                job_id,
+                actions,
+                browser_engine="camoufox",
+            )
         c1_html: str | None = None
         c1_body_text: str | None = None
         c1_ready_wait_ms: int | None = None
