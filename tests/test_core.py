@@ -59,6 +59,7 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertTrue(manifest["capabilities"]["c1_render"])
         self.assertFalse(manifest["capabilities"]["c1_generic_interaction"])
         self.assertTrue(manifest["capabilities"]["c2_readonly_inspect"])
+        self.assertTrue(manifest["capabilities"]["c2_api_candidates"])
         self.assertTrue(manifest["capabilities"]["c3_browser_use"])
         self.assertTrue(manifest["capabilities"]["c3_semantic_targeting"])
         self.assertTrue(manifest["capabilities"]["c3_aria_snapshot"])

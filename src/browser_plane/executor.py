@@ -13,7 +13,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .config import RuntimePaths
@@ -24,6 +24,117 @@ from .processes import BrowserProcessRegistry
 
 
 MAX_RENDERED_ARTIFACT_BYTES = 10_000_000
+
+_SENSITIVE_QUERY_KEYS = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "apikey",
+        "auth",
+        "authorization",
+        "code",
+        "key",
+        "password",
+        "secret",
+        "session",
+        "signature",
+        "sig",
+        "token",
+    }
+)
+_API_NOISE_HOST_SUFFIXES = (
+    "doubleclick.net",
+    "google-analytics.com",
+    "googletagmanager.com",
+)
+_API_NOISE_PATH_MARKERS = ("/captcha/", "/telemetry/", "/tracking/")
+
+
+def _safe_network_candidate_url(url: str) -> str:
+    split = urlsplit(url)
+    query = []
+    for key, value in parse_qsl(split.query, keep_blank_values=True):
+        lowered = key.lower()
+        if lowered in _SENSITIVE_QUERY_KEYS or any(marker in lowered for marker in ("token", "secret", "password", "signature")):
+            value = "REDACTED"
+        query.append((key, value))
+    return urlunsplit((split.scheme, split.netloc, split.path, urlencode(query), ""))
+
+
+def derive_api_candidates(
+    page_url: str,
+    requests: list[dict[str, str]],
+    responses: list[dict[str, object]],
+    *,
+    limit: int = 20,
+) -> list[dict[str, object]]:
+    """Derive likely application-data endpoints from C2 network metadata.
+
+    This is intentionally heuristic and evidence-only. It never reads response bodies
+    and does not imply that a candidate is stable enough for production acquisition.
+    """
+    page_host = (urlsplit(page_url).hostname or "").lower()
+    response_by_url = {str(item.get("url") or ""): item for item in responses}
+    candidates: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for request in requests:
+        resource_type = str(request.get("resource_type") or "").lower()
+        if resource_type not in {"xhr", "fetch"}:
+            continue
+        raw_url = str(request.get("url") or "")
+        split = urlsplit(raw_url)
+        host = (split.hostname or "").lower()
+        path = split.path or "/"
+        path_lower = path.lower()
+        response = response_by_url.get(raw_url, {})
+        content_type = str(response.get("content_type") or "").split(";", 1)[0].strip().lower()
+        same_origin = bool(page_host and host == page_host)
+        reasons: list[str] = [resource_type]
+        score = 0
+
+        if same_origin:
+            score += 3
+            reasons.append("same_origin")
+        if path_lower.startswith("/api/") or "/api/" in path_lower or "graphql" in path_lower:
+            score += 3
+            reasons.append("api_path")
+        if content_type == "application/json" or content_type.endswith("+json"):
+            score += 3
+            reasons.append("json_response")
+        if str(request.get("method") or "GET").upper() != "GET":
+            score += 1
+            reasons.append("non_get")
+
+        if any(host == suffix or host.endswith("." + suffix) for suffix in _API_NOISE_HOST_SUFFIXES):
+            continue
+        if any(marker in path_lower for marker in _API_NOISE_PATH_MARKERS):
+            continue
+        if score < 3:
+            continue
+
+        method = str(request.get("method") or "GET").upper()
+        safe_url = _safe_network_candidate_url(raw_url)
+        identity = (method, safe_url)
+        if identity in seen:
+            continue
+        seen.add(identity)
+
+        candidates.append(
+            {
+                "score": score,
+                "method": method,
+                "url": safe_url,
+                "resource_type": resource_type,
+                "status": response.get("status"),
+                "content_type": content_type or None,
+                "same_origin": same_origin,
+                "reasons": reasons,
+            }
+        )
+
+    candidates.sort(key=lambda item: (-int(item["score"]), str(item["url"])))
+    return candidates[: max(0, limit)]
 
 
 class CapabilityError(RuntimeError):
@@ -871,12 +982,19 @@ class BrowserExecutor:
                         if len(requests) < 200
                         else None,
                     )
-                    page.on(
-                        "response",
-                        lambda resp: responses.append({"status": resp.status, "url": resp.url})
-                        if len(responses) < 200
-                        else None,
-                    )
+                    def record_response(resp: Any) -> None:
+                        if len(responses) >= 200:
+                            return
+                        content_type = str(resp.headers.get("content-type", ""))
+                        responses.append(
+                            {
+                                "status": resp.status,
+                                "url": resp.url,
+                                "content_type": content_type,
+                            }
+                        )
+
+                    page.on("response", record_response)
 
                 started = time.monotonic()
                 response = page.goto(spec.url, wait_until="domcontentloaded", timeout=spec.max_run_sec * 1000)
@@ -925,6 +1043,7 @@ class BrowserExecutor:
                     result["console"] = console_messages
                     result["requests"] = requests
                     result["responses"] = responses
+                    result["api_candidates"] = derive_api_candidates(page.url, requests, responses)
                     result["cdp"] = {
                         "navigation_history": navigation,
                         "performance_metrics": performance,

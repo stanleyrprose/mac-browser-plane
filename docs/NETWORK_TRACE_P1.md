@@ -63,12 +63,18 @@ Applications using certificate pinning may reject interception even when a user 
 
 Regular explicit HTTP proxy mode is aimed at HTTP/1.x and HTTP/2-style proxy traffic. Native UDP/QUIC traffic may bypass or require another mitmproxy mode. P1 does not add TUN, transparent routing, WireGuard, or system-wide routing changes merely to capture HTTP/3.
 
-## Promotion gate
+## Escalation and promotion gate
 
-P1 proves that bounded metadata capture works. It does **not** yet route a Browser Plane Chrome worker through the proxy automatically. Promote this further only when a real source needs one of these outcomes:
+Use the least invasive diagnostic layer that can answer the question:
 
-1. discover an XHR/JSON/GraphQL endpoint that DOM acquisition cannot identify reliably;
-2. diagnose an authentication/redirect/network failure not explainable by C2 evidence;
-3. prove that API acquisition can replace a materially more expensive rendered-browser path.
+```text
+C0/C1 normal acquisition
+        ↓ insufficient evidence
+C2 Read-only Inspect + api_candidates
+        ↓ still insufficient
+Network Trace P1 / mitmproxy
+```
 
-If that gate is met, the next change should inject an optional loopback proxy into an existing ephemeral debug Chrome launch path without creating a second browser lifecycle manager or a new public MCP capability.
+C2 is the default API-discovery path because it already observes browser XHR/fetch traffic without changing browser proxy or certificate trust. Network Trace should be used only when C2 cannot answer the problem, for example when deeper response metadata/body inspection, replay/rewriting, or proxy-level connection/TLS diagnosis is materially required.
+
+P1 does **not** route a Browser Plane Chrome worker through the proxy automatically. Automatic Chrome proxy injection remains gated on a real source where C2 is demonstrably insufficient. If that gate is met, the next change should inject an optional loopback proxy into an existing ephemeral debug Chrome launch path without creating a second browser lifecycle manager or a new public MCP capability.
