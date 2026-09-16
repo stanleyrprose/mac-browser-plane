@@ -57,6 +57,7 @@ class BrowserEngine(StrEnum):
     CHROME = "chrome"
     LIGHTPANDA = "lightpanda"
     CAMOUFOX = "camoufox"
+    NODRIVER = "nodriver"
 
 
 @dataclass(frozen=True)

@@ -598,6 +598,90 @@ class ExecutorTests(unittest.TestCase):
                     (BrowserEngine.CHROME, "c3_requires_chrome_v1"),
                 )
 
+    def test_explicit_nodriver_routes_ephemeral_c1_without_auto_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            spec = JobSpec(
+                task_type=TaskType.AUTOMATE,
+                url="https://example.com",
+                engine=BrowserEngine.NODRIVER,
+            )
+            with patch.object(BrowserExecutor, "_nodriver_available", return_value=True):
+                self.assertEqual(
+                    executor._select_browser_engine(spec, inspect_mode=False, use_mode=False),
+                    (BrowserEngine.NODRIVER, "explicit_nodriver"),
+                )
+
+            with (
+                patch.object(BrowserExecutor, "_nodriver_available", return_value=True),
+                patch.object(
+                    BrowserExecutor,
+                    "_run_nodriver",
+                    return_value={"engine": "c1-nodriver", "browser_engine": "nodriver"},
+                ) as run_nodriver,
+            ):
+                result = executor._run_browser("job-nodriver", spec, None)
+            run_nodriver.assert_called_once_with("job-nodriver", spec)
+            self.assertEqual(result["engine_route"]["selected"], "nodriver")
+            self.assertEqual(result["engine_route"]["attempted"], ["nodriver"])
+            self.assertIsNone(result["engine_route"]["fallback"])
+
+    def test_nodriver_v1_rejects_c2_c3_and_persistent_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            c2 = JobSpec(
+                task_type=TaskType.INSPECT,
+                url="https://example.com",
+                engine=BrowserEngine.NODRIVER,
+            )
+            c3 = JobSpec(
+                task_type=TaskType.USE,
+                url="https://example.com",
+                engine=BrowserEngine.NODRIVER,
+                actions=({"action": "snapshot"},),
+            )
+            persistent = JobSpec(
+                task_type=TaskType.AUTOMATE,
+                url="https://example.com",
+                engine=BrowserEngine.NODRIVER,
+                profile_mode=ProfileMode.EXCLUSIVE_PERSISTENT,
+            )
+            with patch.object(BrowserExecutor, "_nodriver_available", return_value=True):
+                with self.assertRaisesRegex(CapabilityError, "c2_requires_chrome_diagnostics"):
+                    executor._select_browser_engine(c2, inspect_mode=True, use_mode=False)
+                with self.assertRaisesRegex(CapabilityError, "c3_nodriver_not_supported_v1"):
+                    executor._select_browser_engine(c3, inspect_mode=False, use_mode=True)
+                with self.assertRaisesRegex(CapabilityError, "nodriver_v1_ephemeral_only"):
+                    executor._select_browser_engine(persistent, inspect_mode=False, use_mode=False)
+
+    def test_auto_router_never_promotes_nodriver(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            spec = JobSpec(task_type=TaskType.AUTOMATE, url="https://example.com")
+            with (
+                patch.object(BrowserExecutor, "_nodriver_available", return_value=True),
+                patch.object(BrowserExecutor, "_lightpanda_binary", return_value=None),
+            ):
+                self.assertEqual(
+                    executor._select_browser_engine(spec, inspect_mode=False, use_mode=False),
+                    (BrowserEngine.CHROME, "lightpanda_unavailable"),
+                )
+
+    def test_explicit_nodriver_c1_preflight_does_not_require_playwright(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            spec = JobSpec(
+                task_type=TaskType.AUTOMATE,
+                url="https://example.com",
+                engine=BrowserEngine.NODRIVER,
+            )
+            with patch.object(BrowserExecutor, "_playwright_available", return_value=False):
+                executor.preflight(spec)
+
     def test_c2_readonly_cdp_allowlist_blocks_mutation(self) -> None:
         session = Mock()
         session.send.return_value = {"currentIndex": 0, "entries": []}

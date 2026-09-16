@@ -5,17 +5,18 @@
 **Baseline:** Mac-Centric Browser Execution Plane R1 v1.4.1 FROZEN  
 **Branch:** `main`  
 **R1 baseline status:** **AUTHORIZED R1 OPERATIONAL SCOPE COMPLETE**  
-**Current post-R1 production status:** **C0–C3 + semantic targeting + Lightpanda + selective Camoufox + local Artifact OCR P0 + PIC v1 Provider production COMPLETE**  
+**Current post-R1 production status:** **C0–C3 + semantic targeting + Lightpanda + selective Camoufox + explicit nodriver C1 + local Artifact OCR P0 + PIC v1 Provider production COMPLETE**  
 **R1 closure:** `docs/R1-OPERATIONAL-BASELINE-CLOSURE-2026-09-04.md`
 
-## Current verification snapshot — 2026-09-11
+## Current verification snapshot — 2026-09-16
 
-- [x] full source regression suite: **65/65 PASS**
+- [x] full source regression suite: **87/87 PASS**
 - [x] `browserctl doctor = READY`
 - [x] SQLite integrity `ok`, WAL enabled, synchronous FULL, busy timeout 5000
 - [x] Chrome available
 - [x] Lightpanda optional engine installed/ready
 - [x] Camoufox optional engine package/browser asset installed/ready
+- [x] nodriver `0.50.3` optional engine package installed/ready; explicit ephemeral C1 smoke HTTP 200
 - [x] Artifact OCR ready: Tesseract `5.5.3`, runtime-local `tessdata_best`, fixed `mya+eng`
 - [x] real MTE evidence MCP smoke: 20 OCR lines, mean confidence `79.22`, expected SHA-256, date/time/tonnage recovered
 - [x] stale Profile Leases: `[]`
@@ -78,7 +79,7 @@ Historical contract/closure:
 
 ## Lightpanda C1 fast path
 
-- [x] internal engine values include auto/chrome/lightpanda/camoufox
+- [x] internal engine values include auto/chrome/lightpanda/camoufox/nodriver
 - [x] ephemeral C1 AUTO prefers Lightpanda when runnable
 - [x] Lightpanda runs as runtime-owned subprocess with registry/lease/cancellation participation
 - [x] safe C1 compatibility/quality failure can fall back to Chrome with `engine_route` evidence
@@ -104,6 +105,20 @@ Contract/closure:
 Contract:
 
 - `docs/CAMOUFOX_ENGINE_ROUTING.md`
+
+## nodriver selective C1 engine
+
+- [x] upstream `nodriver==0.50.3` integrated directly
+- [x] short-lived Browser Plane-owned subprocess using system Chrome; no nodriver daemon/MCP/REST surface
+- [x] explicit ephemeral C1 only in v1
+- [x] C2, C3 and persistent profiles remain unsupported on nodriver
+- [x] AUTO never promotes to nodriver
+- [x] no automatic nodriver <-> Chrome replay fallback
+- [x] local C1 smoke, doctor readiness and post-run residue checks passed
+
+Contract:
+
+- `docs/NODRIVER_ENGINE_ROUTING.md`
 
 ## Artifact OCR P0
 

@@ -97,6 +97,16 @@ class Doctor:
             },
             degraded=True,
         )
+        add(
+            "nodriver_optional",
+            True,
+            {
+                "python_package_installed": importlib.util.find_spec("nodriver") is not None,
+                "chrome_available": chrome.exists() and os.access(chrome, os.X_OK),
+                "mode": "explicit_ephemeral_c1_only",
+            },
+            degraded=True,
+        )
 
         ocr = ocr_readiness(self.paths)
         add("artifact_ocr", bool(ocr["ready"]), ocr, degraded=True)

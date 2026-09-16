@@ -22,6 +22,7 @@
 | Network Trace (`mitmdump`) | P1 COMPLETE / LOCAL OPERATOR DIAGNOSTIC / DEFAULT OFF |
 | Lightpanda ephemeral C1 fast path | COMPLETE / OPTIONAL ENGINE |
 | Camoufox selective ephemeral C1/C3 | COMPLETE / OPTIONAL ENGINE |
+| nodriver explicit ephemeral C1 | COMPLETE / OPTIONAL ENGINE |
 | SignalForge Provider `pull_ssh_v1` | COMPLETE / PRODUCTION ENABLED |
 | Autonomous embedded Browser Agent | DEFERRED |
 | Headed human takeover | DEFERRED |
@@ -77,6 +78,17 @@ Real-source checks established the escalation boundary before adding more mitmpr
 - post-smoke doctor reported no stale profile leases and no Browser Process Registry ownership residue;
 - production `browserctl trace doctor` remains **READY / default OFF / loopback only**.
 
+### 2.3 nodriver C1 verification — 2026-09-16
+
+- pinned `nodriver==0.50.3` installed in the development runtime;
+- explicit ephemeral C1 smoke against `https://example.com` returned HTTP 200 with `engine_route.selected=nodriver` and no fallback;
+- rendered HTML evidence and SHA-256 were persisted through the existing evidence path;
+- browser work completed in approximately 680 ms on the verification run;
+- post-run `browserctl doctor` returned **READY** and reported `nodriver_optional` ready;
+- stale profile leases: none; Browser Process Registry ownership residue: none;
+- full repository regression after integration: **87/87 PASS**;
+- v1 remains explicit C1 only: no AUTO promotion, persistent profile, C2, C3, or automatic cross-engine replay.
+
 ## 3. Production invocation modes
 
 ### Local
@@ -104,9 +116,10 @@ C1 persistent              Chrome
 C2                         Chrome
 C3 AUTO                    Chrome
 C1/C3 selective            Camoufox with explicit/source evidence
+C1 selective Chromium      nodriver explicit only (ephemeral v1)
 ```
 
-Camoufox has no automatic replay fallback. Lightpanda fallback is restricted to side-effect-safe ephemeral C1.
+Camoufox and nodriver have no automatic replay fallback. Lightpanda fallback is restricted to side-effect-safe ephemeral C1.
 
 ## 5. Accepted production boundaries
 

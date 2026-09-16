@@ -6,7 +6,7 @@ Mac Browser Plane is the browser execution runtime on the Mac mini. It gives aut
 
 **Status: OPERATIONAL / READY**
 
-As of **2026-09-11**, the current checkout passed the full source regression suite (**65/65 tests**) and the installed runtime returned `browserctl doctor = READY` with SQLite integrity `ok`, Chrome/Lightpanda/Camoufox available, Artifact OCR ready on Tesseract 5.5.3 + runtime-local `tessdata_best` (`mya+eng`), no stale profile leases, and no Browser Process Registry ownership residue.
+As of **2026-09-16**, the current checkout passed the full source regression suite (**87/87 tests**) and the development runtime returned `browserctl doctor = READY` with SQLite integrity `ok`, Chrome/Lightpanda/Camoufox/nodriver available, Artifact OCR ready on Tesseract 5.5.3 + runtime-local `tessdata_best` (`mya+eng`), no stale profile leases, and no Browser Process Registry ownership residue.
 
 The current machine-readable contract is `src/browser_plane/capabilities.json`.
 
@@ -62,10 +62,11 @@ Engine choice is normally internal to Browser Plane.
 | C2 read-only inspect | Chrome |
 | ordinary AUTO C3 Browser Use | Chrome |
 | fingerprint-sensitive ephemeral C1/C3 | Camoufox only when explicitly/source-evidence selected |
+| direct-CDP Chromium validation (C1) | nodriver only when explicitly selected; ephemeral only in v1 |
 
-Important fallback boundary: automatic Lightpanda -> Chrome fallback is limited to side-effect-safe ephemeral C1 work. Camoufox has no automatic cross-engine replay fallback.
+Important fallback boundary: automatic Lightpanda -> Chrome fallback is limited to side-effect-safe ephemeral C1 work. Camoufox and nodriver have no automatic cross-engine replay fallback.
 
-See `docs/LIGHTPANDA_ENGINE_ROUTING.md` and `docs/CAMOUFOX_ENGINE_ROUTING.md`.
+See `docs/LIGHTPANDA_ENGINE_ROUTING.md`, `docs/CAMOUFOX_ENGINE_ROUTING.md`, and `docs/NODRIVER_ENGINE_ROUTING.md`.
 
 ## C3 Browser Use
 
@@ -230,6 +231,6 @@ Current deliberate deferrals include:
 - SEA/VPS browser egress;
 - China browser egress;
 - a separate Chrome DevTools MCP daemon;
-- Lightpanda or Camoufox native MCP/server surfaces.
+- Lightpanda, Camoufox, or nodriver native MCP/server surfaces.
 
 New scope should be introduced only when a concrete source/business need justifies it.
