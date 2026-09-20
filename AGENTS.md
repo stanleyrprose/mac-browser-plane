@@ -21,9 +21,10 @@ C1 Render              -> browser_render
 C2 Read-only Inspect   -> browser_inspect
 C3 Browser Use         -> browser_use
 Artifact OCR           -> artifact_ocr
+Document OCR           -> document_ocr
 ```
 
-C0–C3 are COMPLETE. C3 Semantic Targeting is COMPLETE. `artifact_ocr` is an orthogonal local artifact-processing capability, not C4: P0 accepts only runtime-owned PNG/JPEG evidence, runs fixed Burmese+English OCR without network access, and returns evidence enrichment that must be source-cross-checked before critical business fields are trusted. It is not enabled in the SignalForge remote Provider contract.
+C0–C3 are COMPLETE. C3 Semantic Targeting is COMPLETE. `artifact_ocr` and `document_ocr` are orthogonal artifact-processing capabilities, not C4. Image OCR accepts runtime-owned PNG/JPEG; document OCR accepts runtime-owned PDF, rasterizes bounded pages with macOS PDFKit, then runs the same fixed Burmese+English OCR without network access. OCR remains evidence enrichment that must be source-cross-checked before critical business fields are trusted. SignalForge remote authorization is controlled by its Provider Invocation Contract; raw image-path OCR remains local-only while the document-OCR provider path is URL-policy constrained.
 
 Internal engine routing is transparent to callers: C0 uses system `curl`; ephemeral C1 prefers Lightpanda when installed and safely falls back to Chrome; persistent-profile C1, all C2 diagnostics, and ordinary AUTO C3 Browser Use remain Chrome. Camoufox is an optional anti-detection engine for selective ephemeral C1/C3 jobs only. nodriver is an optional direct-CDP Chromium engine for explicit ephemeral C1 jobs only in v1. AUTO never promotes to Camoufox or nodriver, and neither engine has automatic cross-engine replay fallback. Do not bypass `mac-browser-plane` to call Lightpanda, Camoufox, or nodriver surfaces directly. Machine-readable routing truth is in `src/browser_plane/capabilities.json`; rationale is in `docs/LIGHTPANDA_ENGINE_ROUTING.md`, `docs/CAMOUFOX_ENGINE_ROUTING.md`, and `docs/NODRIVER_ENGINE_ROUTING.md`.
 

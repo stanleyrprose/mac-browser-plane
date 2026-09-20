@@ -16,6 +16,7 @@ from browser_plane.provider_agent import (
     _poll_delay,
     canonical_json,
     mcp_arguments,
+    package_document_ocr_success,
     package_success,
     request_sha256,
     run_once,
@@ -81,7 +82,7 @@ def claim(req: dict) -> dict:
         "provider_id": "mac-mm-01",
         "provider_request_id": req["provider_request_id"],
         "provider_attempt_id": str(uuid.uuid4()),
-        "claim_token": "claim-secret",
+        "claim_token": [REDACTED_SECRET],
         "claim_expires_at": "2026-09-08T06:01:00Z",
         "request": req,
     }
@@ -151,6 +152,13 @@ class ProviderAgentValidationTests(unittest.TestCase):
             args = mcp_arguments(req)
             self.assertEqual(args["url"], URL)
             self.assertEqual(req["mcp_tool"], CAPABILITY_TOOL_MAP[capability])
+
+    def test_document_ocr_validates_but_uses_composed_execution_path(self):
+        req = request("DOCUMENT_OCR")
+        self.assertIs(validate_request(req, contract()), req)
+        self.assertEqual(req["mcp_tool"], "document_ocr")
+        with self.assertRaisesRegex(ProviderAgentError, "composed fetch"):
+            mcp_arguments(req)
 
     def test_c3_plan_matches_pic_subset_and_real_mcp_action_names(self):
         plan = {
@@ -223,6 +231,54 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             self.assertEqual(manifest["media_type"], "text/html")
             self.assertEqual(manifest["artifact_sha256"], hashlib.sha256(raw).hexdigest())
 
+    def test_document_ocr_packages_fetch_and_networkless_ocr_with_matching_pdf_sha(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf = b"%PDF-1.4\nfixture"
+            path = Path(tmp) / "document.pdf"
+            path.write_bytes(pdf)
+            digest = hashlib.sha256(pdf).hexdigest()
+            req = request("DOCUMENT_OCR")
+            c = claim(req)
+            fetch = job_payload(
+                {
+                    "engine": "c0-fetch",
+                    "url": URL,
+                    "status": 200,
+                    "content_type": "application/pdf",
+                    "body_bytes": len(pdf),
+                    "artifact_path": str(path),
+                    "sha256": digest,
+                },
+                job_id="fetch-job",
+            )
+            ocr = {
+                "ok": True,
+                "is_error": False,
+                "structured_content": {
+                    "input_sha256": digest,
+                    "input_bytes": len(pdf),
+                    "network_access": False,
+                    "engine": "tesseract",
+                    "text": "official tender",
+                    "mean_confidence": 80.0,
+                },
+            }
+            wire = package_document_ocr_success(c, fetch, ocr)
+            line, artifact = wire.split(b"\n", 1)
+            manifest = json.loads(line)
+            parsed = json.loads(artifact)
+            self.assertEqual(manifest["media_type"], "application/json")
+            self.assertEqual(manifest["browser_job_id"], "fetch-job")
+            self.assertEqual(parsed["document_ocr"]["input_sha256"], digest)
+            self.assertNotIn("artifact_path", parsed["fetch"])
+
+            bad_ocr = {
+                **ocr,
+                "structured_content": {**ocr["structured_content"], "input_sha256": "0" * 64},
+            }
+            with self.assertRaisesRegex(ProviderAgentError, "OCR input SHA"):
+                package_document_ocr_success(c, fetch, bad_ocr)
+
     def test_c1_c2_c3_package_canonical_json_evidence(self):
         for capability, engine in (
             ("C1_RENDER", "c1-playwright"),
@@ -252,7 +308,7 @@ class ProviderAgentRunTests(unittest.TestCase):
         self.assertEqual(invoker.calls, [])
 
     def test_all_capabilities_route_to_expected_tool(self):
-        for capability in CAPABILITY_TOOL_MAP:
+        for capability in (value for value in CAPABILITY_TOOL_MAP if value != "DOCUMENT_OCR"):
             plan = None
             if capability == "C3_BROWSER_USE":
                 plan = {"side_effect_class": "READ_ONLY_NAVIGATION", "retry_safe": False, "steps": [{"action": "snapshot"}]}
@@ -270,6 +326,58 @@ class ProviderAgentRunTests(unittest.TestCase):
                 result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
             self.assertEqual(result["status"], "ACCEPTED")
             self.assertEqual(invoker.calls[0][0], CAPABILITY_TOOL_MAP[capability])
+            self.assertEqual(len(transport.submitted), 1)
+
+    def test_document_ocr_run_composes_fetch_then_local_document_ocr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf = b"%PDF-1.4\nfixture"
+            path = Path(tmp) / "document.pdf"
+            path.write_bytes(pdf)
+            digest = hashlib.sha256(pdf).hexdigest()
+            req = request("DOCUMENT_OCR")
+            transport = FakeTransport(claim(req))
+
+            class SequenceInvoker:
+                def __init__(self):
+                    self.calls = []
+
+                def call(self, tool, arguments):
+                    self.calls.append((tool, arguments))
+                    if tool == "browser_fetch":
+                        return job_payload(
+                            {
+                                "engine": "c0-fetch",
+                                "url": URL,
+                                "status": 200,
+                                "content_type": "application/pdf",
+                                "body_bytes": len(pdf),
+                                "artifact_path": str(path),
+                                "sha256": digest,
+                            },
+                            job_id="fetch-job",
+                        )
+                    if tool == "document_ocr":
+                        self.assertEqual(arguments["artifact_path"], str(path))
+                        self.assertEqual(arguments["psm"], 6)
+                        self.assertEqual(arguments["max_pages"], 12)
+                        return {
+                            "ok": True,
+                            "is_error": False,
+                            "structured_content": {
+                                "input_sha256": digest,
+                                "network_access": False,
+                                "engine": "tesseract",
+                                "text": "official tender",
+                            },
+                        }
+                    raise AssertionError(tool)
+
+                assertEqual = unittest.TestCase().assertEqual
+
+            invoker = SequenceInvoker()
+            result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
+            self.assertEqual(result["status"], "ACCEPTED")
+            self.assertEqual([tool for tool, _ in invoker.calls], ["browser_fetch", "document_ocr"])
             self.assertEqual(len(transport.submitted), 1)
 
     def test_invalid_claim_fails_before_mcp_and_reports_contract_failure(self):

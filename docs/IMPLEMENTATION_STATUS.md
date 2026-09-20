@@ -52,7 +52,7 @@
 - [x] bounded web URL guard
 - [x] no arbitrary JavaScript or raw CDP
 - [x] original v0 eight-tool local contract live-verified on 2026-09-05
-- [x] later C3 slice extended the same adapter to nine tools; Artifact OCR P0 extends the local surface to **ten tools** without changing C0-C3 semantics
+- [x] later C3 slice extended the same adapter to nine tools; Artifact OCR P0 extended it to ten; Document OCR v1 extends the local surface to **eleven tools** without changing C0-C3 semantics
 
 Historical contract/closure:
 

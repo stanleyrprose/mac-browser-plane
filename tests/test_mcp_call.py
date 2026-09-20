@@ -23,6 +23,7 @@ class McpCallUnitTests(unittest.TestCase):
                 "browser_capabilities",
                 "browser_doctor",
                 "artifact_ocr",
+                "document_ocr",
                 "browser_fetch",
                 "browser_render",
                 "browser_use",

@@ -12,6 +12,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from .config import RuntimePaths
 from .db import JobStore, RuntimeDB
 from .doctor import Doctor
+from .document_ocr import DocumentOCRError, ocr_document
 from .models import Egress, JobSpec, JobState, ProfileMode, TERMINAL_STATES, TaskType
 from .ocr import OCRError, ocr_artifact
 
@@ -22,8 +23,8 @@ mcp = MCPServer(
         "Local stdio-only adapter over the existing Mac Browser Plane runtime. "
         "Use browser_fetch for strict-TLS HTTP acquisition, browser_render for deterministic "
         "engine-routed JS/DOM rendering, browser_inspect for Chrome read-only diagnostics, browser_use for "
-        "multi-step Playwright interaction with internal engine routing, and artifact_ocr for networkless Burmese/English "
-        "OCR over runtime-owned evidence images. OCR output is evidence enrichment only; critical business fields require "
+        "multi-step Playwright interaction with internal engine routing, artifact_ocr for runtime-owned images, and document_ocr "
+        "for networkless Burmese/English OCR over runtime-owned PDF evidence. OCR output is evidence enrichment only; critical business fields require "
         "source cross-checking. Arbitrary JavaScript and raw CDP are not available."
     ),
 )
@@ -294,6 +295,17 @@ def artifact_ocr(artifact_path: str, psm: int = 6) -> dict[str, Any]:
     try:
         return ocr_artifact(paths, artifact_path, psm=psm)
     except OCRError as exc:
+        raise ToolError(str(exc)) from exc
+
+
+@mcp.tool()
+def document_ocr(artifact_path: str, psm: int = 6, max_pages: int = 12) -> dict[str, Any]:
+    """Rasterize a runtime-owned PDF with macOS PDFKit and OCR every bounded page with fixed mya+eng Tesseract."""
+    paths = RuntimePaths.discover()
+    paths.ensure()
+    try:
+        return ocr_document(paths, artifact_path, psm=psm, max_pages=max_pages)
+    except DocumentOCRError as exc:
         raise ToolError(str(exc)) from exc
 
 
