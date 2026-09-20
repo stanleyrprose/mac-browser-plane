@@ -82,7 +82,7 @@ def claim(req: dict) -> dict:
         "provider_id": "mac-mm-01",
         "provider_request_id": req["provider_request_id"],
         "provider_attempt_id": str(uuid.uuid4()),
-        "claim_token": [REDACTED_SECRET],
+        "claim_token": "[REDACTED_SECRET]",
         "claim_expires_at": "2026-09-08T06:01:00Z",
         "request": req,
     }
