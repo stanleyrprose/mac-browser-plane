@@ -64,7 +64,7 @@ The runtime is not:
 
 `mac-browser-mcp` is stdio-only. The MCP process is an adapter over the existing JobStore/worker and does not become a second Browser worker.
 
-The current local MCP surface contains ten tools: capabilities, doctor, artifact OCR, fetch, render, inspect, browser use, status, result, cancel. `artifact_ocr` is local-only in P0 and is not authorized through the SignalForge Provider contract.
+The current local MCP surface contains eleven tools: capabilities, doctor, artifact OCR, document OCR, fetch, render, inspect, browser use, status, result, cancel. `artifact_ocr` remains local image evidence OCR. `document_ocr` adds runtime-owned PDF rasterization through macOS PDFKit followed by the same networkless Tesseract `mya+eng` OCR. SignalForge remote use is separately constrained by its Provider Invocation Contract.
 
 ### 4.3 SignalForge Provider Agent
 

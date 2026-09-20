@@ -47,7 +47,7 @@ Returns the machine-readable capability/security/engine-routing manifest.
 
 Arguments: none.
 
-Runs readiness checks and returns the report plus the private report path. It does not start a second worker. The report includes `artifact_ocr` readiness and the active Tesseract/model profile.
+Runs readiness checks and returns the report plus the private report path. It does not start a second worker. The report includes `artifact_ocr` and `document_ocr` readiness, including Tesseract/model profile and PDFKit/Swift prerequisites.
 
 ### `artifact_ocr`
 
@@ -58,7 +58,19 @@ Networkless Burmese/English OCR over an already-acquired Browser Plane evidence 
 | `artifact_path` | string | required | absolute or evidence-relative path that must resolve inside the runtime evidence directory |
 | `psm` | int | 6 | one of `4`, `6`, `11` |
 
-P0 accepts only PNG/JPEG images up to 25 MB. Tesseract runs fixed `mya+eng`, preferring runtime-local `tessdata_best`. The result includes input SHA-256, reconstructed text/lines, bounding boxes and confidence. It performs no network I/O. OCR output is evidence enrichment only: source-specific logic must cross-check critical identifiers, dates, quantities and actions before they become canonical business fields. P0 is local-only and is not authorized through the current SignalForge Provider contract.
+P0 accepts only PNG/JPEG images up to 25 MB. Tesseract runs fixed `mya+eng`, preferring runtime-local `tessdata_best`. The result includes input SHA-256, reconstructed text/lines, bounding boxes and confidence. It performs no network I/O. OCR output is evidence enrichment only: source-specific logic must cross-check critical identifiers, dates, quantities and actions before they become canonical business fields.
+
+### `document_ocr`
+
+Networkless OCR over an already-acquired runtime-owned PDF. macOS PDFKit rasterizes each bounded page to a temporary runtime-owned PNG, then the existing `artifact_ocr` implementation performs fixed `mya+eng` OCR. Intermediate page images are deleted after OCR.
+
+| Field | Type | Default | Bounds / meaning |
+| --- | --- | --- | --- |
+| `artifact_path` | string | required | absolute or evidence-relative PDF path resolving inside runtime evidence |
+| `psm` | int | 6 | one of `4`, `6`, `11` |
+| `max_pages` | int | 12 | `1..20` |
+
+The result includes PDF SHA-256, page count, processed-page count, per-page OCR text/confidence/image SHA, combined OCR text, and whether the page limit truncated the document. The OCR phase performs no network I/O and intermediate page images are not retained. Provider authorization is controlled separately by the SignalForge Provider Invocation Contract.
 
 ### `browser_fetch`
 

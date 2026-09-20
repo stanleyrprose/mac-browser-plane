@@ -23,6 +23,7 @@ CAPABILITY_TOOL_MAP = {
     "C1_RENDER": "browser_render",
     "C2_INSPECT": "browser_inspect",
     "C3_BROWSER_USE": "browser_use",
+    "DOCUMENT_OCR": "document_ocr",
 }
 PIC_C3_ACTIONS = {"snapshot", "navigate", "click", "wait", "type", "select", "press", "screenshot"}
 MAX_C0_BYTES = 1_000_000
@@ -171,6 +172,8 @@ def validate_request(request: dict[str, Any], contract: dict[str, Any]) -> dict[
 
 def mcp_arguments(request: dict[str, Any]) -> dict[str, Any]:
     capability = str(request["capability"])
+    if capability == "DOCUMENT_OCR":
+        raise ProviderAgentError("DOCUMENT_OCR uses the composed fetch + document_ocr path")
     base = {
         "url": str(request["requested_url"]),
         "queue_timeout_sec": min(60, int(request["max_run_seconds"])),
@@ -223,6 +226,80 @@ def _portable_result(value: Any) -> Any:
             continue
         cleaned[key] = _portable_result(item)
     return cleaned
+
+
+def _direct_structured(payload: dict[str, Any], *, tool: str) -> dict[str, Any]:
+    if payload.get("ok") is False or payload.get("is_error") is True:
+        raise ProviderAgentError(f"{tool} MCP call returned error")
+    structured = payload.get("structured_content", payload)
+    if not isinstance(structured, dict):
+        raise ProviderAgentError(f"{tool} MCP structured result missing")
+    return structured
+
+
+def package_document_ocr_success(
+    claim: dict[str, Any],
+    fetch_payload: dict[str, Any],
+    ocr_payload: dict[str, Any],
+) -> bytes:
+    request = claim["request"]
+    fetch_job = _public_job(fetch_payload)
+    fetch_result = fetch_job["result"]
+    artifact_path = fetch_result.get("artifact_path")
+    if not isinstance(artifact_path, str) or not artifact_path:
+        raise ProviderAgentError("DOCUMENT_OCR fetch artifact_path missing")
+    pdf_path = Path(artifact_path)
+    try:
+        pdf = pdf_path.read_bytes()
+    except OSError as exc:
+        raise ProviderAgentError(f"DOCUMENT_OCR fetched artifact unreadable: {exc}") from exc
+    if not pdf.startswith(b"%PDF-"):
+        raise ProviderAgentError("DOCUMENT_OCR fetched artifact is not PDF")
+    if fetch_result.get("sha256") != hashlib.sha256(pdf).hexdigest():
+        raise ProviderAgentError("DOCUMENT_OCR fetched artifact SHA mismatch")
+    if fetch_result.get("body_bytes") != len(pdf):
+        raise ProviderAgentError("DOCUMENT_OCR fetched artifact length mismatch")
+    max_bytes = request.get("max_bytes")
+    if not isinstance(max_bytes, int) or len(pdf) > max_bytes:
+        raise ProviderAgentError("DOCUMENT_OCR fetched PDF exceeds request max_bytes")
+
+    ocr = _direct_structured(ocr_payload, tool="document_ocr")
+    if ocr.get("input_sha256") != hashlib.sha256(pdf).hexdigest():
+        raise ProviderAgentError("DOCUMENT_OCR OCR input SHA does not match fetched PDF")
+    if ocr.get("network_access") is not False:
+        raise ProviderAgentError("DOCUMENT_OCR must report network_access=false")
+
+    artifact = canonical_json(
+        {
+            "fetch": _portable_result(fetch_result),
+            "document_ocr": _portable_result(ocr),
+        }
+    )
+    if len(artifact) > int(max_bytes):
+        raise ProviderAgentError("DOCUMENT_OCR result artifact exceeds request max_bytes")
+    final_url = fetch_result.get("url")
+    if not isinstance(final_url, str) or not final_url:
+        raise ProviderAgentError("DOCUMENT_OCR final URL missing")
+    status = fetch_result.get("status")
+    if status is not None and not isinstance(status, int):
+        raise ProviderAgentError("DOCUMENT_OCR HTTP status invalid")
+
+    manifest = {
+        "contract_version": CONTRACT_VERSION,
+        "provider_request_id": claim["provider_request_id"],
+        "provider_attempt_id": claim["provider_attempt_id"],
+        "claim_token": claim["claim_token"],
+        "browser_job_id": fetch_job["job_id"],
+        "request_sha256": request["request_sha256"],
+        "state": "SUCCEEDED",
+        "mcp_tool": request["mcp_tool"],
+        "final_url": final_url,
+        "http_status": status,
+        "media_type": "application/json",
+        "artifact_bytes": len(artifact),
+        "artifact_sha256": hashlib.sha256(artifact).hexdigest(),
+    }
+    return canonical_json(manifest) + b"\n" + artifact
 
 
 def package_success(claim: dict[str, Any], mcp_payload: dict[str, Any]) -> bytes:
@@ -353,9 +430,30 @@ def run_once(*, transport: ProviderTransport, invoker: McpInvoker, contract: dic
     request = claim["request"]
     try:
         validate_claim(claim, contract, now=now)
-        tool = str(request["mcp_tool"])
-        payload = invoker.call(tool, mcp_arguments(request))
-        wire = package_success(claim, payload)
+        capability = str(request["capability"])
+        if capability == "DOCUMENT_OCR":
+            fetch_payload = invoker.call(
+                "browser_fetch",
+                {
+                    "url": str(request["requested_url"]),
+                    "queue_timeout_sec": min(60, int(request["max_run_seconds"])),
+                    "max_run_sec": int(request["max_run_seconds"]),
+                    "client_timeout_sec": min(900, int(request["max_run_seconds"]) + 30),
+                },
+            )
+            fetch_job = _public_job(fetch_payload)
+            artifact_path = fetch_job["result"].get("artifact_path")
+            if not isinstance(artifact_path, str) or not artifact_path:
+                raise ProviderAgentError("DOCUMENT_OCR fetch artifact_path missing")
+            ocr_payload = invoker.call(
+                "document_ocr",
+                {"artifact_path": artifact_path, "psm": 6, "max_pages": 12},
+            )
+            wire = package_document_ocr_success(claim, fetch_payload, ocr_payload)
+        else:
+            tool = str(request["mcp_tool"])
+            payload = invoker.call(tool, mcp_arguments(request))
+            wire = package_success(claim, payload)
         return transport.submit(wire)
     except Exception as exc:
         failure = {

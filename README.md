@@ -155,7 +155,7 @@ Production executable:
 ~/agent-browser-runtime/app/venv/bin/mac-browser-mcp
 ```
 
-The current MCP exposes ten tools: capabilities, doctor, artifact OCR, fetch, render, inspect, browser use, job status, job result, and job cancel. It is stdio-only and does not start a network listener. `artifact_ocr` is an orthogonal, networkless evidence-processing capability rather than a C4 browser level; P0 accepts only runtime-owned PNG/JPEG evidence and treats OCR output as enrichment, not authoritative business truth.
+The current MCP exposes eleven tools: capabilities, doctor, artifact OCR, document OCR, fetch, render, inspect, browser use, job status, job result, and job cancel. It is stdio-only and does not start a network listener. `artifact_ocr` and `document_ocr` are orthogonal, networkless evidence-processing capabilities rather than C4 browser levels. `document_ocr` rasterizes runtime-owned PDFs with macOS PDFKit and OCRs the bounded pages with the same fixed `mya+eng` Tesseract profile. OCR output remains enrichment, not authoritative business truth.
 
 Recommended discovery sequence:
 
@@ -163,6 +163,7 @@ Recommended discovery sequence:
 browser_capabilities
 browser_doctor      # when readiness matters
 artifact_ocr        # orthogonal local evidence OCR (PNG/JPEG, mya+eng)
+document_ocr        # runtime-owned PDF -> PDFKit page images -> mya+eng OCR
 browser_fetch       # C0
 browser_render      # C1
 browser_inspect     # C2

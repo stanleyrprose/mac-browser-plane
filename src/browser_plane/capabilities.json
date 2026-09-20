@@ -32,7 +32,9 @@
     "screenshot": true,
     "binary_artifact": true,
     "artifact_ocr": true,
+    "document_ocr": true,
     "artifact_ocr_signalforge_provider_authorized": false,
+    "document_ocr_signalforge_provider_authorized": true,
     "remote_invocation": true,
     "headed_human_takeover": false,
     "c3_actions": [
@@ -69,6 +71,24 @@
       "signalforge_provider_authorized": false,
       "allowed_psm": [4, 6, 11],
       "max_input_bytes": 26214400,
+      "result_semantics": "evidence_enrichment_only_critical_fields_require_source_cross_check"
+    },
+    "document_ocr": {
+      "tool": "document_ocr",
+      "rasterizer": "macOS PDFKit",
+      "ocr_engine": "tesseract",
+      "languages": ["mya", "eng"],
+      "preferred_model_profile": "tessdata_best",
+      "accepted_inputs": ["application/pdf"],
+      "input_scope": "runtime_evidence_only",
+      "network_access": false,
+      "local_mcp_authorized": true,
+      "codexpro_bridge_authorized": true,
+      "signalforge_provider_authorized": true,
+      "allowed_psm": [4, 6, 11],
+      "max_input_bytes": 26214400,
+      "max_pages": 20,
+      "intermediate_images_retained": false,
       "result_semantics": "evidence_enrichment_only_critical_fields_require_source_cross_check"
     }
   },
@@ -159,7 +179,8 @@
       "C1_RENDER": "browser_render",
       "C2_INSPECT": "browser_inspect",
       "C3_BROWSER_USE": "browser_use",
-      "ARTIFACT_OCR": "artifact_ocr"
+      "ARTIFACT_OCR": "artifact_ocr",
+      "DOCUMENT_OCR": "document_ocr"
     },
     "specialized_consumers": {
       "wechat_mp_archive": {
