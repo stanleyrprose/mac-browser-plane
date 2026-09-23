@@ -33,6 +33,14 @@ class ProviderAgentError(RuntimeError):
     pass
 
 
+class ProviderExecutionError(ProviderAgentError):
+    pass
+
+
+class ProviderResultError(ProviderAgentError):
+    pass
+
+
 class ProviderTransport(Protocol):
     def claim(self) -> dict[str, Any]: ...
     def submit(self, payload: bytes) -> dict[str, Any]: ...
@@ -202,14 +210,14 @@ def mcp_arguments(request: dict[str, Any]) -> dict[str, Any]:
 
 def _public_job(payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("ok") is False:
-        raise ProviderAgentError("local MCP call returned error")
+        raise ProviderExecutionError("local MCP call returned error")
     structured = payload.get("structured_content", payload)
     if not isinstance(structured, dict):
-        raise ProviderAgentError("local MCP structured result missing")
+        raise ProviderResultError("local MCP structured result missing")
     if structured.get("state") != "SUCCEEDED":
-        raise ProviderAgentError(f"Browser job not SUCCEEDED: {structured.get('state')}")
+        raise ProviderExecutionError(f"Browser job not SUCCEEDED: {structured.get('state')}")
     if not isinstance(structured.get("job_id"), str) or not isinstance(structured.get("result"), dict):
-        raise ProviderAgentError("Browser job result contract incomplete")
+        raise ProviderResultError("Browser job result contract incomplete")
     return structured
 
 
@@ -220,7 +228,7 @@ def _portable_result(value: Any) -> Any:
         return value
     cleaned: dict[str, Any] = {}
     for key, item in value.items():
-        if key in {"artifact_path", "screenshot"}:
+        if key in {"artifact_path", "screenshot", "private_ref"}:
             continue
         if key == "path" and isinstance(item, str) and item.startswith("/"):
             continue
@@ -230,10 +238,10 @@ def _portable_result(value: Any) -> Any:
 
 def _direct_structured(payload: dict[str, Any], *, tool: str) -> dict[str, Any]:
     if payload.get("ok") is False or payload.get("is_error") is True:
-        raise ProviderAgentError(f"{tool} MCP call returned error")
+        raise ProviderExecutionError(f"{tool} MCP call returned error")
     structured = payload.get("structured_content", payload)
     if not isinstance(structured, dict):
-        raise ProviderAgentError(f"{tool} MCP structured result missing")
+        raise ProviderResultError(f"{tool} MCP structured result missing")
     return structured
 
 
@@ -247,42 +255,74 @@ def package_document_ocr_success(
     fetch_result = fetch_job["result"]
     artifact_path = fetch_result.get("artifact_path")
     if not isinstance(artifact_path, str) or not artifact_path:
-        raise ProviderAgentError("DOCUMENT_OCR fetch artifact_path missing")
+        raise ProviderResultError("DOCUMENT_OCR fetch artifact_path missing")
     pdf_path = Path(artifact_path)
     try:
         pdf = pdf_path.read_bytes()
     except OSError as exc:
-        raise ProviderAgentError(f"DOCUMENT_OCR fetched artifact unreadable: {exc}") from exc
+        raise ProviderResultError(f"DOCUMENT_OCR fetched artifact unreadable: {exc}") from exc
     if not pdf.startswith(b"%PDF-"):
-        raise ProviderAgentError("DOCUMENT_OCR fetched artifact is not PDF")
+        raise ProviderResultError("DOCUMENT_OCR fetched artifact is not PDF")
     if fetch_result.get("sha256") != hashlib.sha256(pdf).hexdigest():
-        raise ProviderAgentError("DOCUMENT_OCR fetched artifact SHA mismatch")
+        raise ProviderResultError("DOCUMENT_OCR fetched artifact SHA mismatch")
     if fetch_result.get("body_bytes") != len(pdf):
-        raise ProviderAgentError("DOCUMENT_OCR fetched artifact length mismatch")
+        raise ProviderResultError("DOCUMENT_OCR fetched artifact length mismatch")
     max_bytes = request.get("max_bytes")
     if not isinstance(max_bytes, int) or len(pdf) > max_bytes:
-        raise ProviderAgentError("DOCUMENT_OCR fetched PDF exceeds request max_bytes")
+        raise ProviderResultError("DOCUMENT_OCR fetched PDF exceeds request max_bytes")
 
     ocr = _direct_structured(ocr_payload, tool="document_ocr")
     if ocr.get("input_sha256") != hashlib.sha256(pdf).hexdigest():
-        raise ProviderAgentError("DOCUMENT_OCR OCR input SHA does not match fetched PDF")
+        raise ProviderResultError("DOCUMENT_OCR OCR input SHA does not match fetched PDF")
     if ocr.get("network_access") is not False:
-        raise ProviderAgentError("DOCUMENT_OCR must report network_access=false")
+        raise ProviderResultError("DOCUMENT_OCR must report network_access=false")
 
     artifact = canonical_json(
         {
             "fetch": _portable_result(fetch_result),
             "document_ocr": _portable_result(ocr),
+            "runtime_projection": {
+                "runtime_state": {
+                    "runtime_id": PROVIDER_ID,
+                    "runtime_type": "browser",
+                    "contract_version": "agent-runtime-v1.1",
+                    "operational_state": "unknown",
+                    "reason_codes": ["READINESS_NOT_RECHECKED_FOR_PROVIDER_REQUEST"],
+                },
+                "job_state": {
+                    "job_id": fetch_job["job_id"],
+                    "native_state": "COMPOSED_SUCCEEDED",
+                    "state": "succeeded",
+                    "stages": ["browser_fetch", "document_ocr"],
+                    "failure_class": None,
+                    "partial_effect_possible": False,
+                },
+                "verification_state": {
+                    "status": "unknown",
+                    "scope": "business_semantics",
+                    "reason": "SOURCE_CROSS_CHECK_REQUIRED",
+                    "checks": [
+                        {"name": "fetch_job_succeeded", "status": "pass"},
+                        {"name": "pdf_artifact_sha_verified", "status": "pass"},
+                        {"name": "ocr_input_sha_matches_fetch", "status": "pass"},
+                        {"name": "ocr_network_access_disabled", "status": "pass"},
+                    ],
+                },
+                "artifacts": (
+                    list((_portable_result(fetch_job.get("runtime_projection")) or {}).get("artifacts") or [])
+                    + list((_portable_result(ocr.get("runtime_projection")) or {}).get("artifacts") or [])
+                ),
+            },
         }
     )
     if len(artifact) > int(max_bytes):
-        raise ProviderAgentError("DOCUMENT_OCR result artifact exceeds request max_bytes")
+        raise ProviderResultError("DOCUMENT_OCR result artifact exceeds request max_bytes")
     final_url = fetch_result.get("url")
     if not isinstance(final_url, str) or not final_url:
-        raise ProviderAgentError("DOCUMENT_OCR final URL missing")
+        raise ProviderResultError("DOCUMENT_OCR final URL missing")
     status = fetch_result.get("status")
     if status is not None and not isinstance(status, int):
-        raise ProviderAgentError("DOCUMENT_OCR HTTP status invalid")
+        raise ProviderResultError("DOCUMENT_OCR HTTP status invalid")
 
     manifest = {
         "contract_version": CONTRACT_VERSION,
@@ -310,23 +350,30 @@ def package_success(claim: dict[str, Any], mcp_payload: dict[str, Any]) -> bytes
     if capability == "C0_FETCH":
         path = result.get("artifact_path")
         if not isinstance(path, str):
-            raise ProviderAgentError("C0 raw artifact_path missing")
+            raise ProviderResultError("C0 raw artifact_path missing")
         artifact = Path(path).read_bytes()
         media_type = str(result.get("content_type") or "application/octet-stream").split(";", 1)[0].strip()
         if result.get("sha256") != hashlib.sha256(artifact).hexdigest() or result.get("body_bytes") != len(artifact):
-            raise ProviderAgentError("C0 local artifact integrity mismatch")
+            raise ProviderResultError("C0 local artifact integrity mismatch")
     else:
-        artifact = canonical_json({"job_id": job["job_id"], "state": job["state"], "result": _portable_result(result)})
+        artifact = canonical_json(
+            {
+                "job_id": job["job_id"],
+                "state": job["state"],
+                "runtime_projection": _portable_result(job.get("runtime_projection")),
+                "result": _portable_result(result),
+            }
+        )
         media_type = "application/json"
     max_bytes = request.get("max_bytes")
     if not isinstance(max_bytes, int) or len(artifact) > max_bytes:
-        raise ProviderAgentError("provider result artifact exceeds request max_bytes")
+        raise ProviderResultError("provider result artifact exceeds request max_bytes")
     final_url = result.get("url")
     if not isinstance(final_url, str) or not final_url:
-        raise ProviderAgentError("Browser result final URL missing")
+        raise ProviderResultError("Browser result final URL missing")
     status = result.get("status")
     if status is not None and not isinstance(status, int):
-        raise ProviderAgentError("Browser result HTTP status invalid")
+        raise ProviderResultError("Browser result HTTP status invalid")
     manifest = {
         "contract_version": CONTRACT_VERSION,
         "provider_request_id": claim["provider_request_id"],
@@ -444,7 +491,7 @@ def run_once(*, transport: ProviderTransport, invoker: McpInvoker, contract: dic
             fetch_job = _public_job(fetch_payload)
             artifact_path = fetch_job["result"].get("artifact_path")
             if not isinstance(artifact_path, str) or not artifact_path:
-                raise ProviderAgentError("DOCUMENT_OCR fetch artifact_path missing")
+                raise ProviderResultError("DOCUMENT_OCR fetch artifact_path missing")
             ocr_payload = invoker.call(
                 "document_ocr",
                 {"artifact_path": artifact_path, "psm": 6, "max_pages": 12},
@@ -456,11 +503,19 @@ def run_once(*, transport: ProviderTransport, invoker: McpInvoker, contract: dic
             wire = package_success(claim, payload)
         return transport.submit(wire)
     except Exception as exc:
+        if isinstance(exc, ProviderExecutionError):
+            failure_class = "PROVIDER_EXECUTION_FAILED"
+        elif isinstance(exc, ProviderResultError):
+            failure_class = "PROVIDER_RESULT_INVALID"
+        elif isinstance(exc, ProviderAgentError):
+            failure_class = "PROVIDER_CONTRACT_MISMATCH"
+        else:
+            failure_class = "PROVIDER_NOT_READY"
         failure = {
             "provider_request_id": str(claim.get("provider_request_id", "")),
             "provider_attempt_id": str(claim.get("provider_attempt_id", "")),
             "claim_token": str(claim.get("claim_token", "")),
-            "failure_class": "PROVIDER_CONTRACT_MISMATCH" if isinstance(exc, ProviderAgentError) else "PROVIDER_NOT_READY",
+            "failure_class": failure_class,
         }
         try:
             transport.fail(failure)

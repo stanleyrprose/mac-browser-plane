@@ -190,5 +190,20 @@
         "pipeline": "C1_CHROME_RENDERED_DOM -> article Markdown/HTML/images/metadata"
       }
     }
+  },
+  "runtime_projection": {
+    "contract_version": "agent-runtime-v1.1",
+    "field": "runtime_projection",
+    "runtime_state_values": ["ready", "degraded", "blocked", "unknown"],
+    "job_state_values": ["queued", "waiting", "running", "succeeded", "failed", "cancelled", "timeout", "recovery_required", "unknown"],
+    "verification_state_values": ["not_required", "pending", "pass", "fail", "unknown"],
+    "local_surfaces": ["browser_doctor", "browser_fetch", "browser_render", "browser_inspect", "browser_use", "browser_status", "browser_result", "artifact_ocr", "document_ocr"],
+    "provider_wire": {
+      "manifest_version": 1,
+      "manifest_unchanged": true,
+      "json_evidence_projection": ["C1_RENDER", "C2_INSPECT", "C3_BROWSER_USE", "DOCUMENT_OCR"],
+      "c0_raw_artifact_projection": false,
+      "note": "C0 remains a raw artifact under the strict v1 provider result manifest."
+    }
   }
 }

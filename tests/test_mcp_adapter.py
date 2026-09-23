@@ -109,6 +109,9 @@ class MCPAdapterContractTests(unittest.TestCase):
                 evidence_policy="always",
             )
         self.assertEqual(result["state"], JobState.SUCCEEDED.value)
+        self.assertEqual(result["runtime_projection"]["job_state"]["state"], "succeeded")
+        self.assertEqual(result["runtime_projection"]["runtime_state"]["operational_state"], "unknown")
+        self.assertEqual(result["runtime_projection"]["verification_state"]["status"], "unknown")
         self.assertIsNotNone(jobs.spec)
         self.assertEqual(jobs.spec.task_type, TaskType.FETCH)
         self.assertEqual(jobs.spec.egress, Egress.DIRECT)
@@ -155,6 +158,8 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.structured_content["artifact_processing"]["ocr"]["codexpro_bridge_authorized"])
         self.assertFalse(result.structured_content["artifact_processing"]["ocr"]["signalforge_provider_authorized"])
         self.assertTrue(result.structured_content["artifact_processing"]["document_ocr"]["signalforge_provider_authorized"])
+        self.assertEqual(result.structured_content["runtime_projection"]["contract_version"], "agent-runtime-v1.1")
+        self.assertTrue(result.structured_content["runtime_projection"]["provider_wire"]["manifest_unchanged"])
 
     async def test_mcp_exposes_only_the_authorized_v0_tools(self) -> None:
         async with Client(mcp) as client:

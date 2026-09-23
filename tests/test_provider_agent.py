@@ -12,6 +12,7 @@ from unittest.mock import patch
 from browser_plane.provider_agent import (
     CAPABILITY_TOOL_MAP,
     ProviderAgentError,
+    ProviderExecutionError,
     SshProviderTransport,
     _poll_delay,
     canonical_json,
@@ -116,7 +117,7 @@ class FakeInvoker:
         return self.payload
 
 
-def job_payload(result: dict, job_id="browser-job-1") -> dict:
+def job_payload(result: dict, job_id="browser-job-1", runtime_projection=None) -> dict:
     return {
         "ok": True,
         "tool": "x",
@@ -130,6 +131,7 @@ def job_payload(result: dict, job_id="browser-job-1") -> dict:
             "failure_class": None,
             "partial_effect_possible": False,
             "result": result,
+            **({"runtime_projection": runtime_projection} if runtime_projection is not None else {}),
         },
     }
 
@@ -231,6 +233,30 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             self.assertEqual(manifest["media_type"], "text/html")
             self.assertEqual(manifest["artifact_sha256"], hashlib.sha256(raw).hexdigest())
 
+    def test_json_provider_projection_strips_private_runtime_refs(self):
+        req = request("C1_RENDER")
+        c = claim(req)
+        projection = {
+            "runtime_state": {"operational_state": "unknown"},
+            "job_state": {"state": "succeeded"},
+            "verification_state": {"status": "unknown"},
+            "artifacts": [
+                {
+                    "kind": "browser_output",
+                    "private_ref": "/private/evidence/rendered.html",
+                    "sha256": "a" * 64,
+                    "portable": False,
+                }
+            ],
+        }
+        result = {"engine": "c1-playwright", "url": URL, "status": 200}
+        wire = package_success(c, job_payload(result, runtime_projection=projection))
+        _line, artifact = wire.split(b"\n", 1)
+        parsed = json.loads(artifact)
+        self.assertEqual(parsed["runtime_projection"]["artifacts"][0]["sha256"], "a" * 64)
+        self.assertNotIn("private_ref", parsed["runtime_projection"]["artifacts"][0])
+        self.assertNotIn("/private/evidence", artifact.decode("utf-8"))
+
     def test_document_ocr_packages_fetch_and_networkless_ocr_with_matching_pdf_sha(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = b"%PDF-1.4\nfixture"
@@ -271,6 +297,9 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             self.assertEqual(manifest["browser_job_id"], "fetch-job")
             self.assertEqual(parsed["document_ocr"]["input_sha256"], digest)
             self.assertNotIn("artifact_path", parsed["fetch"])
+            self.assertEqual(parsed["runtime_projection"]["job_state"]["state"], "succeeded")
+            self.assertEqual(parsed["runtime_projection"]["verification_state"]["status"], "unknown")
+            self.assertEqual(parsed["runtime_projection"]["verification_state"]["reason"], "SOURCE_CROSS_CHECK_REQUIRED")
 
             bad_ocr = {
                 **ocr,
@@ -297,6 +326,7 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             self.assertEqual(manifest["media_type"], "application/json")
             parsed = json.loads(artifact)
             self.assertEqual(parsed["result"]["engine"], engine)
+            self.assertIn("runtime_projection", parsed)
 
 
 class ProviderAgentRunTests(unittest.TestCase):
@@ -379,6 +409,25 @@ class ProviderAgentRunTests(unittest.TestCase):
             self.assertEqual(result["status"], "ACCEPTED")
             self.assertEqual([tool for tool, _ in invoker.calls], ["browser_fetch", "document_ocr"])
             self.assertEqual(len(transport.submitted), 1)
+
+    def test_failed_browser_job_is_execution_failure_not_contract_mismatch(self):
+        req = request("C1_RENDER")
+        transport = FakeTransport(claim(req))
+
+        class FailedJobInvoker:
+            def call(self, tool, arguments):
+                return {
+                    "ok": True,
+                    "structured_content": {
+                        "job_id": "browser-job-failed",
+                        "state": "FAILED",
+                        "result": {"error": "render failed"},
+                    },
+                }
+
+        with self.assertRaises(ProviderExecutionError):
+            run_once(transport=transport, invoker=FailedJobInvoker(), contract=contract(), now=NOW)
+        self.assertEqual(transport.failed[0]["failure_class"], "PROVIDER_EXECUTION_FAILED")
 
     def test_invalid_claim_fails_before_mcp_and_reports_contract_failure(self):
         req = request("C0_FETCH")
