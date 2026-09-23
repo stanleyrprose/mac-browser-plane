@@ -15,6 +15,7 @@ from .doctor import Doctor
 from .document_ocr import DocumentOCRError, ocr_document
 from .models import Egress, JobSpec, JobState, ProfileMode, TERMINAL_STATES, TaskType
 from .ocr import OCRError, ocr_artifact
+from .runtime_projection import project_doctor, project_immediate_ocr, project_job
 
 
 mcp = MCPServer(
@@ -224,6 +225,7 @@ def _public_job(row: dict[str, Any]) -> dict[str, Any]:
         "failure_class": row["failure_class"],
         "partial_effect_possible": bool(row["partial_effect_possible"]),
         "result": result,
+        "runtime_projection": project_job(row, result),
     }
 
 
@@ -284,6 +286,7 @@ def browser_doctor() -> dict[str, Any]:
     doctor = Doctor(paths, db)
     report = doctor.run()
     report["report_path"] = str(doctor.write_report(report))
+    report["runtime_projection"] = project_doctor(report, str(report["report_path"]))
     return report
 
 
@@ -293,7 +296,9 @@ def artifact_ocr(artifact_path: str, psm: int = 6) -> dict[str, Any]:
     paths = RuntimePaths.discover()
     paths.ensure()
     try:
-        return ocr_artifact(paths, artifact_path, psm=psm)
+        result = ocr_artifact(paths, artifact_path, psm=psm)
+        result["runtime_projection"] = project_immediate_ocr("artifact_ocr", result, artifact_path)
+        return result
     except OCRError as exc:
         raise ToolError(str(exc)) from exc
 
@@ -304,7 +309,9 @@ def document_ocr(artifact_path: str, psm: int = 6, max_pages: int = 12) -> dict[
     paths = RuntimePaths.discover()
     paths.ensure()
     try:
-        return ocr_document(paths, artifact_path, psm=psm, max_pages=max_pages)
+        result = ocr_document(paths, artifact_path, psm=psm, max_pages=max_pages)
+        result["runtime_projection"] = project_immediate_ocr("document_ocr", result, artifact_path)
+        return result
     except DocumentOCRError as exc:
         raise ToolError(str(exc)) from exc
 
@@ -419,6 +426,7 @@ def browser_result(job_id: str) -> dict[str, Any]:
         "state": row["state"],
         "result": result,
         "failure_class": row["failure_class"],
+        "runtime_projection": project_job(row, result),
     }
 
 

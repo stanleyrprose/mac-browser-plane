@@ -35,7 +35,7 @@ There is no HTTP/WebSocket MCP listener.
 
 ## 3. MCP tools
 
-Current local surface: exactly **10 tools**.
+Current local surface: exactly **11 tools**.
 
 ### `browser_capabilities`
 
@@ -362,6 +362,47 @@ Requires one target form.
 ```
 
 Downloaded artifacts remain under Browser Plane evidence ownership.
+
+## 6A. Runtime status projection
+
+Existing MCP responses now include a backward-compatible `runtime_projection` read model. It does not create a new tool, worker, listener, queue, or authority.
+
+The projection keeps four concerns separate:
+
+```json
+{
+  "runtime_state": {
+    "runtime_id": "mac-mm-01",
+    "operational_state": "ready | degraded | blocked | unknown"
+  },
+  "job_state": {
+    "native_state": "SUCCEEDED",
+    "state": "succeeded"
+  },
+  "verification_state": {
+    "status": "unknown",
+    "scope": "business_semantics"
+  },
+  "artifacts": []
+}
+```
+
+Important semantics:
+
+```text
+runtime ready
+!= job succeeded
+!= business result verified
+```
+
+- `browser_doctor` is the authoritative live readiness projection and maps Doctor checks into conditions.
+- Browser job/status/result responses normalize the existing durable JobState while preserving the native state.
+- `artifact_ocr` and `document_ocr` are immediate bounded calls, so their projected job state is `succeeded` only when the call returns successfully; they do not create a second durable Browser Plane job.
+- OCR verification remains `unknown` at the business-semantic level with `SOURCE_CROSS_CHECK_REQUIRED`, even when OCR execution, SHA checks, and networkless execution pass.
+- C1's non-empty rendered-body gate appears as a verification check, but it is only an acquisition-quality check and does not make the page business-correct.
+- Local artifact paths appear as private runtime references. Provider packaging strips those private references.
+
+SignalForge Provider Result v1 has a strict manifest field set. That manifest is unchanged. For C1/C2/C3 and DOCUMENT_OCR, the JSON evidence artifact carries the runtime projection. C0 intentionally remains the existing raw artifact and therefore does not embed projection metadata in v1.
 
 ## 7. Common MCP job response
 
