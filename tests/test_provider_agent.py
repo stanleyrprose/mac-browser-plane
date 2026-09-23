@@ -233,6 +233,30 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             self.assertEqual(manifest["media_type"], "text/html")
             self.assertEqual(manifest["artifact_sha256"], hashlib.sha256(raw).hexdigest())
 
+    def test_json_provider_projection_strips_private_runtime_refs(self):
+        req = request("C1_RENDER")
+        c = claim(req)
+        projection = {
+            "runtime_state": {"operational_state": "unknown"},
+            "job_state": {"state": "succeeded"},
+            "verification_state": {"status": "unknown"},
+            "artifacts": [
+                {
+                    "kind": "browser_output",
+                    "private_ref": "/private/evidence/rendered.html",
+                    "sha256": "a" * 64,
+                    "portable": False,
+                }
+            ],
+        }
+        result = {"engine": "c1-playwright", "url": URL, "status": 200}
+        wire = package_success(c, job_payload(result, runtime_projection=projection))
+        _line, artifact = wire.split(b"\n", 1)
+        parsed = json.loads(artifact)
+        self.assertEqual(parsed["runtime_projection"]["artifacts"][0]["sha256"], "a" * 64)
+        self.assertNotIn("private_ref", parsed["runtime_projection"]["artifacts"][0])
+        self.assertNotIn("/private/evidence", artifact.decode("utf-8"))
+
     def test_document_ocr_packages_fetch_and_networkless_ocr_with_matching_pdf_sha(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = b"%PDF-1.4\nfixture"

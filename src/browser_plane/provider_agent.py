@@ -260,7 +260,7 @@ def package_document_ocr_success(
     try:
         pdf = pdf_path.read_bytes()
     except OSError as exc:
-        raise ProviderAgentError(f"DOCUMENT_OCR fetched artifact unreadable: {exc}") from exc
+        raise ProviderResultError(f"DOCUMENT_OCR fetched artifact unreadable: {exc}") from exc
     if not pdf.startswith(b"%PDF-"):
         raise ProviderResultError("DOCUMENT_OCR fetched artifact is not PDF")
     if fetch_result.get("sha256") != hashlib.sha256(pdf).hexdigest():
