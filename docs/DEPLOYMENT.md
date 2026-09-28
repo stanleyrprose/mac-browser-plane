@@ -20,13 +20,14 @@ Reason: macOS TCC can block background LaunchAgents from `~/Documents`, and an i
 - Python 3.12+ for development/install tooling;
 - Google Chrome installed at the normal application path (or explicit `BROWSER_PLANE_CHROME` override);
 - optional Lightpanda binary for ephemeral C1 fast path;
-- optional Camoufox package/browser asset for selective engine use.
+- optional Camoufox package/browser asset for selective engine use;
+- Node or Deno for the video resolver JavaScript challenge path.
 
 ## 3. Development install
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[browser,antidetect,agent,dev]'
+.venv/bin/python -m pip install -e '.[browser,antidetect,agent,video,dev]'
 .venv/bin/browserctl init
 .venv/bin/browserctl doctor
 ```

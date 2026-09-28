@@ -15,6 +15,7 @@ from .doctor import Doctor
 from .document_ocr import DocumentOCRError, ocr_document
 from .models import Egress, JobSpec, JobState, ProfileMode, TERMINAL_STATES, TaskType
 from .ocr import OCRError, ocr_artifact
+from .video_resolver import VideoResolveError, resolve_video
 
 
 mcp = MCPServer(
@@ -24,8 +25,9 @@ mcp = MCPServer(
         "Use browser_fetch for strict-TLS HTTP acquisition, browser_render for deterministic "
         "engine-routed JS/DOM rendering, browser_inspect for Chrome read-only diagnostics, browser_use for "
         "multi-step Playwright interaction with internal engine routing, artifact_ocr for runtime-owned images, and document_ocr "
-        "for networkless Burmese/English OCR over runtime-owned PDF evidence. OCR output is evidence enrichment only; critical business fields require "
-        "source cross-checking. Arbitrary JavaScript and raw CDP are not available."
+        "for networkless Burmese/English OCR over runtime-owned PDF evidence, and video_resolve for bounded anonymous video metadata/format resolution. "
+        "OCR output is evidence enrichment only; critical business fields require source cross-checking. "
+        "Arbitrary JavaScript and raw CDP are not available."
     ),
 )
 
@@ -306,6 +308,19 @@ def document_ocr(artifact_path: str, psm: int = 6, max_pages: int = 12) -> dict[
     try:
         return ocr_document(paths, artifact_path, psm=psm, max_pages=max_pages)
     except DocumentOCRError as exc:
+        raise ToolError(str(exc)) from exc
+
+
+@mcp.tool()
+def video_resolve(url: str, timeout_sec: int = 60, max_formats: int = 40) -> dict[str, Any]:
+    """Resolve one public video URL anonymously with bounded yt-dlp strategies; no media bytes or signed stream URLs are returned."""
+    target = _validate_url(url)
+    timeout_sec = _bounded_seconds(timeout_sec, name="timeout_sec", minimum=15, maximum=180)
+    if max_formats < 1 or max_formats > 100:
+        raise ToolError("max_formats must be between 1 and 100")
+    try:
+        return resolve_video(target, timeout_sec=timeout_sec, max_formats=max_formats)
+    except VideoResolveError as exc:
         raise ToolError(str(exc)) from exc
 
 

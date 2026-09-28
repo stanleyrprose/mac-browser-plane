@@ -33,8 +33,10 @@
     "binary_artifact": true,
     "artifact_ocr": true,
     "document_ocr": true,
+    "video_resolve": true,
     "artifact_ocr_signalforge_provider_authorized": false,
     "document_ocr_signalforge_provider_authorized": true,
+    "video_resolve_signalforge_provider_authorized": false,
     "remote_invocation": true,
     "headed_human_takeover": false,
     "c3_actions": [
@@ -90,6 +92,26 @@
       "max_pages": 20,
       "intermediate_images_retained": false,
       "result_semantics": "evidence_enrichment_only_critical_fields_require_source_cross_check"
+    }
+  },
+  "media_resolution": {
+    "video": {
+      "tool": "video_resolve",
+      "backend": "yt-dlp",
+      "network_access": true,
+      "single_item_only": true,
+      "session_mode": "anonymous_only_v1",
+      "signed_stream_urls_returned": false,
+      "local_mcp_authorized": true,
+      "codexpro_bridge_authorized": true,
+      "signalforge_provider_authorized": false,
+      "youtube_strategy_order": [
+        "default",
+        "mweb",
+        "web_safari_hls"
+      ],
+      "youtube_challenge_provider": "external_optional_v1",
+      "result_semantics": "metadata_and_format_resolution_only_download_remains_caller_owned"
     }
   },
   "engine_routing": {
@@ -180,7 +202,8 @@
       "C2_INSPECT": "browser_inspect",
       "C3_BROWSER_USE": "browser_use",
       "ARTIFACT_OCR": "artifact_ocr",
-      "DOCUMENT_OCR": "document_ocr"
+      "DOCUMENT_OCR": "document_ocr",
+      "VIDEO_RESOLVE": "video_resolve"
     },
     "specialized_consumers": {
       "wechat_mp_archive": {
@@ -188,6 +211,10 @@
         "trigger_host": "mp.weixin.qq.com",
         "scope": "known_public_article_urls",
         "pipeline": "C1_CHROME_RENDERED_DOM -> article Markdown/HTML/images/metadata"
+      },
+      "download_agents": {
+        "scope": "public_single_video_preflight",
+        "pipeline": "video_resolve -> caller-owned yt-dlp download using returned strategy hint"
       }
     }
   }

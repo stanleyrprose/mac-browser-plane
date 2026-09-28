@@ -64,6 +64,8 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertTrue(manifest["capabilities"]["c3_browser_use"])
         self.assertTrue(manifest["capabilities"]["c3_semantic_targeting"])
         self.assertTrue(manifest["capabilities"]["c3_aria_snapshot"])
+        self.assertTrue(manifest["capabilities"]["video_resolve"])
+        self.assertFalse(manifest["capabilities"]["video_resolve_signalforge_provider_authorized"])
         self.assertFalse(manifest["capabilities"]["c3_browser_agent"])
         self.assertTrue(manifest["capabilities"]["lightpanda_engine"])
         self.assertTrue(manifest["capabilities"]["camoufox_engine"])
@@ -99,6 +101,10 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertTrue(manifest["local_agent_adapter"]["generic_interaction"])
         self.assertFalse(manifest["local_agent_adapter"]["arbitrary_javascript"])
         self.assertFalse(manifest["local_agent_adapter"]["raw_cdp"])
+        self.assertEqual(manifest["media_resolution"]["video"]["tool"], "video_resolve")
+        self.assertEqual(manifest["media_resolution"]["video"]["session_mode"], "anonymous_only_v1")
+        self.assertFalse(manifest["media_resolution"]["video"]["signed_stream_urls_returned"])
+        self.assertFalse(manifest["media_resolution"]["video"]["signalforge_provider_authorized"])
 
 
 class DBTests(unittest.TestCase):

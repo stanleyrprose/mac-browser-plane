@@ -17,6 +17,7 @@ from .db import JobStore, RuntimeDB
 from .doctor import Doctor
 from .models import JobSpec, JobState, TERMINAL_STATES
 from .network_trace import TraceController
+from .video_resolver import VideoResolveError, resolve_video
 from .worker import Worker
 
 
@@ -200,6 +201,20 @@ def cmd_capabilities(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_video_resolve(args: argparse.Namespace) -> int:
+    try:
+        result = resolve_video(
+            args.url,
+            timeout_sec=args.timeout,
+            max_formats=args.max_formats,
+        )
+    except VideoResolveError as exc:
+        _print({"error": "VIDEO_RESOLVE_FAILED", "detail": str(exc)})
+        return 2
+    _print(result)
+    return 0
+
+
 def _trace_controller() -> TraceController:
     paths, db, _ = _runtime()
     return TraceController(paths, db)
@@ -309,6 +324,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("capabilities")
     p.set_defaults(func=cmd_capabilities)
+
+    p = sub.add_parser("video-resolve", help="resolve public video metadata/formats without downloading media")
+    p.add_argument("url")
+    p.add_argument("--timeout", type=int, default=60)
+    p.add_argument("--max-formats", type=int, default=40)
+    p.set_defaults(func=cmd_video_resolve)
 
     trace = sub.add_parser("trace", help="bounded local network trace diagnostics")
     trace_sub = trace.add_subparsers(dest="trace_command", required=True)

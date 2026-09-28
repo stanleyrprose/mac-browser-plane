@@ -17,7 +17,7 @@ Expected status:
 READY
 ```
 
-Important checks include runtime paths, SQLite integrity/WAL/FULL/busy timeout, Chrome, optional Lightpanda/Camoufox readiness, stale Profile Leases, Browser Process Registry ownership, and free disk.
+Important checks include runtime paths, SQLite integrity/WAL/FULL/busy timeout, Chrome, optional Lightpanda/Camoufox readiness, video resolver readiness, stale Profile Leases, Browser Process Registry ownership, and free disk.
 
 If `doctor` is not READY, classify the failed check before restarting or modifying anything.
 
@@ -109,6 +109,14 @@ Capability discovery:
 ```bash
 .venv/bin/browserctl capabilities
 ```
+
+Public single-video resolution preflight:
+
+```bash
+.venv/bin/browserctl video-resolve <url> --timeout 60 --max-formats 40
+```
+
+The resolver is anonymous in v1 and returns metadata, format summaries, and a download strategy hint rather than media bytes or signed stream URLs.
 
 ## 6. Recovery after crash/reboot
 
