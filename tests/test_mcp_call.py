@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 import subprocess
 import sys
 import unittest
@@ -24,6 +26,7 @@ class McpCallUnitTests(unittest.TestCase):
                 "browser_doctor",
                 "artifact_ocr",
                 "document_ocr",
+                "video_resolve",
                 "browser_fetch",
                 "browser_render",
                 "browser_use",
@@ -37,12 +40,15 @@ class McpCallUnitTests(unittest.TestCase):
 
 class McpCallStdioSmokeTests(unittest.TestCase):
     def _run(self, *args: str) -> dict:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
         completed = subprocess.run(
             [sys.executable, "-m", "browser_plane.mcp_call", *args],
             text=True,
             capture_output=True,
             check=False,
             timeout=20,
+            env=env,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
         return json.loads(completed.stdout)

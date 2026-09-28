@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -15,6 +16,7 @@ AUTHORIZED_TOOLS = {
     "browser_doctor",
     "artifact_ocr",
     "document_ocr",
+    "video_resolve",
     "browser_fetch",
     "browser_render",
     "browser_use",
@@ -33,6 +35,13 @@ def _server_command() -> str:
     return str(candidate)
 
 
+def _server_env() -> dict[str, str] | None:
+    pythonpath = os.environ.get("PYTHONPATH")
+    if not pythonpath:
+        return None
+    return {"PYTHONPATH": pythonpath}
+
+
 def _parse_args_json(raw: str) -> dict[str, Any]:
     try:
         value = json.loads(raw)
@@ -44,7 +53,7 @@ def _parse_args_json(raw: str) -> dict[str, Any]:
 
 
 async def _list_tools() -> dict[str, Any]:
-    params = StdioServerParameters(command=_server_command(), args=[])
+    params = StdioServerParameters(command=_server_command(), args=[], env=_server_env())
     async with Client(params) as client:
         tools = await client.list_tools()
     names = [tool.name for tool in tools.tools]
@@ -64,7 +73,7 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if name not in AUTHORIZED_TOOLS:
         raise ValueError(f"tool is not authorized through the CodexPro bridge: {name}")
 
-    params = StdioServerParameters(command=_server_command(), args=[])
+    params = StdioServerParameters(command=_server_command(), args=[], env=_server_env())
     async with Client(params) as client:
         result = await client.call_tool(name, arguments)
 
