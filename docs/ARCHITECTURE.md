@@ -64,7 +64,7 @@ The runtime is not:
 
 `mac-browser-mcp` is stdio-only. The MCP process is an adapter over the existing JobStore/worker and does not become a second Browser worker.
 
-The current local MCP surface contains eleven tools: capabilities, doctor, artifact OCR, document OCR, fetch, render, inspect, browser use, status, result, cancel. `artifact_ocr` remains local image evidence OCR. `document_ocr` adds runtime-owned PDF rasterization through macOS PDFKit followed by the same networkless Tesseract `mya+eng` OCR. SignalForge remote use is separately constrained by its Provider Invocation Contract.
+The current local MCP surface contains twelve tools: capabilities, doctor, artifact OCR, document OCR, video resolve, fetch, render, inspect, browser use, status, result, cancel. `artifact_ocr` remains local image evidence OCR. `document_ocr` adds runtime-owned PDF rasterization through macOS PDFKit followed by the same networkless Tesseract `mya+eng` OCR. SignalForge remote use is separately constrained by its Provider Invocation Contract.
 
 ### 4.3 SignalForge Provider Agent
 
@@ -126,6 +126,19 @@ No Browser, MCP, CDP, or Provider API listener is opened on the Mac. Remote auth
 - output includes input SHA-256, reconstructed lines, bounding boxes and confidence;
 - OCR output is evidence enrichment only: critical identifiers, dates, quantities and business actions require source-specific cross-checking before canonical use;
 - P0 is not exposed through the SignalForge Provider Invocation Contract and is deliberately not named C4.
+
+### Video Resolution (orthogonal to C0-C3)
+
+- bounded local resolution of one public HTTP(S) video URL;
+- yt-dlp backend with a supported JavaScript runtime;
+- anonymous v1 contract enforced with user config ignored;
+- YouTube fallback is bounded and read-only: default -> mweb -> web_safari/HLS;
+- returns metadata, playable format summaries, and a caller-facing download strategy hint;
+- never returns signed media URLs or media bytes;
+- actual download remains caller-owned and SignalForge remote authorization is disabled;
+- not C4 and not a second Browser worker.
+
+See `docs/VIDEO_RESOLVER_V1.md` for the detailed contract and live verification.
 
 ### Network Trace P1 (internal operator diagnostic)
 

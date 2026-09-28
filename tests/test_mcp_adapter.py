@@ -149,6 +149,8 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.structured_content["capabilities"]["remote_invocation"])
         self.assertTrue(result.structured_content["capabilities"]["artifact_ocr"])
         self.assertTrue(result.structured_content["capabilities"]["document_ocr"])
+        self.assertTrue(result.structured_content["capabilities"]["video_resolve"])
+        self.assertFalse(result.structured_content["capabilities"]["video_resolve_signalforge_provider_authorized"])
         self.assertFalse(result.structured_content["capabilities"]["artifact_ocr_signalforge_provider_authorized"])
         self.assertTrue(result.structured_content["capabilities"]["document_ocr_signalforge_provider_authorized"])
         self.assertEqual(result.structured_content["artifact_processing"]["ocr"]["input_scope"], "runtime_evidence_only")
@@ -167,6 +169,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
                 "browser_doctor",
                 "artifact_ocr",
                 "document_ocr",
+                "video_resolve",
                 "browser_fetch",
                 "browser_render",
                 "browser_use",
@@ -187,12 +190,15 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
             params = StdioServerParameters(
                 command=str(command),
                 args=[],
-                env={"BROWSER_PLANE_HOME": tmp},
+                env={
+                    "BROWSER_PLANE_HOME": tmp,
+                    "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                },
             )
             async with Client(params) as client:
                 tools = await client.list_tools()
                 result = await client.call_tool("browser_capabilities", {})
-        self.assertEqual(len(tools.tools), 11)
+        self.assertEqual(len(tools.tools), 12)
         self.assertFalse(result.is_error)
         self.assertEqual(result.structured_content["local_agent_adapter"]["transport"], "stdio")
 
