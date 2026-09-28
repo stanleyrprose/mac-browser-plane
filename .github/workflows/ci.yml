@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
-        run: python -m pip install -e '.[browser,agent,dev]'
+        run: python -m pip install -e '.[browser,agent,video,dev]'
       - name: Compile
         run: python -m compileall -q src tests scripts
       - name: Tests
