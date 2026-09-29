@@ -10,6 +10,8 @@ from browser_plane.provider_agent import SshProviderTransport
 from browser_plane.translation_provider import (
     CodexOAuthTranslator,
     TranslationProviderError,
+    _mask_protected_tokens,
+    _restore_protected_tokens,
     _validate_output,
     request_sha256,
     run_translation_once,
@@ -88,6 +90,52 @@ class TranslationProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(TranslationProviderError, "protected token"):
             _validate_output(req, ["公开招标 16.9.2026", "仰光"])
 
+    def test_protected_tokens_are_masked_and_restored_without_relaxing_validation(self) -> None:
+        values = ["Tender ၂၀၂၆-၂၀၂၇ HIE-1/Myingyan/26-27/Pipe"]
+        protected = [["1", "၂၀၂၆-၂၀၂၇", "HIE-1/Myingyan/26-27/Pipe"]]
+        masked, replacements = _mask_protected_tokens(values, protected)
+        self.assertNotIn("၂၀၂၆-၂၀၂၇", masked[0])
+        self.assertNotIn("HIE-1/Myingyan/26-27/Pipe", masked[0])
+        self.assertIn("__SF_PROTECTED_0_0__", masked[0])
+        self.assertIn("__SF_PROTECTED_0_1__", masked[0])
+        self.assertNotIn("__SF_PROTECTED_0_2__", masked[0])
+        self.assertEqual(len(replacements[0]), 2)
+
+        translated = [masked[0].replace("Tender", "招标")]
+        restored = _restore_protected_tokens(translated, replacements)
+        self.assertEqual(restored, ["招标 ၂၀၂၆-၂၀၂၇ HIE-1/Myingyan/26-27/Pipe"])
+        self.assertEqual(
+            _validate_output(
+                {"values": values, "protected_tokens": protected},
+                restored,
+            ),
+            restored,
+        )
+
+    def test_codex_masks_protected_token_before_translation_and_restores_it(self) -> None:
+        req = request()
+        done = type(
+            "Done",
+            (),
+            {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {"translations": ["公开招标 __SF_PROTECTED_0_0__", "仰光"]},
+                    ensure_ascii=False,
+                ),
+                "stderr": "",
+            },
+        )()
+        translator = CodexOAuthTranslator(codex_binary="/opt/homebrew/bin/codex", timeout_seconds=10)
+        with patch("browser_plane.translation_provider.subprocess.run", return_value=done) as run:
+            values, _meta = translator.translate(req)
+
+        self.assertEqual(values[0], "公开招标 15.9.2026")
+        prompt = run.call_args.args[0][-1]
+        self.assertIn("__SF_PROTECTED_0_0__", prompt)
+        self.assertNotIn("15.9.2026", prompt)
+        self.assertIn("protected_placeholders", prompt)
+
     def test_run_submits_bounded_translation_result(self) -> None:
         req = request()
         transport = FakeTransport(claim(req))
@@ -140,6 +188,9 @@ class TranslationProviderTests(unittest.TestCase):
         self.assertIn("--output-schema", argv)
         self.assertIn("gpt-5.6-luna", argv)
         self.assertNotIn("danger-full-access", argv)
+        prompt = argv[-1]
+        self.assertIn("ordinary English prose", prompt)
+        self.assertIn('"source_language": "Myanmar (Burmese) and/or English"', prompt)
         env = run.call_args.kwargs["env"]
         self.assertEqual(set(env), {"HOME", "PATH", "LANG"})
 
