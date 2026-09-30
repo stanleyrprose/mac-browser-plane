@@ -10,7 +10,7 @@ from unittest.mock import patch
 from mcp import Client, StdioServerParameters
 from mcp.server.mcpserver.exceptions import ToolError
 
-from browser_plane.mcp_adapter import _profile_mode, _submit_and_wait, _validate_browser_actions, _validate_url, mcp
+from browser_plane.mcp_adapter import _acquire_public, _profile_mode, _submit_and_wait, _validate_browser_actions, _validate_url, mcp
 from browser_plane.models import Egress, JobState, ProfileMode, TaskType
 
 
@@ -116,6 +116,82 @@ class MCPAdapterContractTests(unittest.TestCase):
         self.assertFalse(jobs.spec.allow_egress_fallback)
         self.assertEqual(jobs.spec.retry_policy, "none")
 
+    def test_acquire_public_stays_on_c0_for_static_content(self) -> None:
+        fetch = {
+            "job_id": "fetch-1",
+            "state": JobState.SUCCEEDED.value,
+            "created_at": "2026-09-30T00:00:00+00:00",
+            "started_at": "2026-09-30T00:00:01+00:00",
+            "finished_at": "2026-09-30T00:00:02+00:00",
+            "failure_class": None,
+            "partial_effect_possible": False,
+            "result": {
+                "engine": "c0-fetch",
+                "transport": "system_curl",
+                "status": 200,
+                "content_type": "text/html",
+                "text_excerpt": "<html><body><p>" + ("content " * 80) + "</p></body></html>",
+            },
+        }
+        with patch("browser_plane.mcp_adapter._submit_and_wait", return_value=fetch) as submit:
+            result = _acquire_public("https://example.com")
+
+        self.assertEqual(result["selected_capability"], "C0_FETCH")
+        self.assertEqual(result["acquisition_outcome"], "CONTENT_RETURNED")
+        self.assertFalse(result["acquisition_route"]["render_fallback_attempted"])
+        self.assertEqual(submit.call_count, 1)
+        self.assertEqual(submit.call_args.kwargs["task_type"], TaskType.FETCH)
+
+    def test_acquire_public_escalates_to_c1_only_on_router_evidence(self) -> None:
+        fetch = {
+            "job_id": "fetch-1",
+            "state": JobState.SUCCEEDED.value,
+            "created_at": "2026-09-30T00:00:00+00:00",
+            "started_at": "2026-09-30T00:00:01+00:00",
+            "finished_at": "2026-09-30T00:00:02+00:00",
+            "failure_class": None,
+            "partial_effect_possible": False,
+            "result": {
+                "engine": "c0-fetch",
+                "transport": "system_curl",
+                "status": 200,
+                "content_type": "text/html",
+                "text_excerpt": '<html><body><div id="root"></div><script src="/app.js"></script></body></html>',
+            },
+        }
+        render = {
+            "job_id": "render-1",
+            "state": JobState.SUCCEEDED.value,
+            "created_at": "2026-09-30T00:00:03+00:00",
+            "started_at": "2026-09-30T00:00:04+00:00",
+            "finished_at": "2026-09-30T00:00:05+00:00",
+            "failure_class": None,
+            "partial_effect_possible": False,
+            "result": {
+                "engine": "c1-lightpanda",
+                "browser_engine": "lightpanda",
+                "status": 200,
+                "content_type": "text/html",
+                "text_excerpt": "Rendered tender content",
+            },
+        }
+        with patch(
+            "browser_plane.mcp_adapter._submit_and_wait",
+            side_effect=[fetch, render],
+        ) as submit:
+            result = _acquire_public("https://example.com")
+
+        self.assertEqual(result["selected_capability"], "C1_RENDER")
+        self.assertEqual(result["job_id"], "render-1")
+        self.assertTrue(result["acquisition_route"]["render_fallback_attempted"])
+        self.assertEqual(result["acquisition_route"]["render_trigger"], "spa_shell_low_text")
+        self.assertFalse(result["acquisition_route"]["c2_authorized"])
+        self.assertFalse(result["acquisition_route"]["c3_authorized"])
+        self.assertEqual([x["capability"] for x in result["attempts"]], ["C0_FETCH", "C1_RENDER"])
+        self.assertEqual(submit.call_args_list[0].kwargs["task_type"], TaskType.FETCH)
+        self.assertEqual(submit.call_args_list[1].kwargs["task_type"], TaskType.AUTOMATE)
+        self.assertEqual(submit.call_args_list[1].kwargs["profile_mode"], ProfileMode.EPHEMERAL)
+
     def test_submit_and_wait_preserves_c3_use_actions(self) -> None:
         jobs = _FakeJobs()
         actions = ({"action": "snapshot", "timeout_ms": 10000},)
@@ -149,12 +225,18 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.structured_content["capabilities"]["remote_invocation"])
         self.assertTrue(result.structured_content["capabilities"]["artifact_ocr"])
         self.assertTrue(result.structured_content["capabilities"]["document_ocr"])
+        self.assertTrue(result.structured_content["capabilities"]["public_read_acquisition_router"])
+        self.assertFalse(result.structured_content["capabilities"]["browser_acquire_signalforge_provider_authorized"])
         self.assertFalse(result.structured_content["capabilities"]["artifact_ocr_signalforge_provider_authorized"])
         self.assertTrue(result.structured_content["capabilities"]["document_ocr_signalforge_provider_authorized"])
         self.assertEqual(result.structured_content["artifact_processing"]["ocr"]["input_scope"], "runtime_evidence_only")
         self.assertTrue(result.structured_content["artifact_processing"]["ocr"]["codexpro_bridge_authorized"])
         self.assertFalse(result.structured_content["artifact_processing"]["ocr"]["signalforge_provider_authorized"])
         self.assertTrue(result.structured_content["artifact_processing"]["document_ocr"]["signalforge_provider_authorized"])
+        self.assertEqual(result.structured_content["discovery"]["primary_acquisition_tool"], "browser_acquire")
+        self.assertFalse(result.structured_content["acquisition_routing"]["signalforge_provider_authorized"])
+        self.assertFalse(result.structured_content["acquisition_routing"]["c2_authorized"])
+        self.assertFalse(result.structured_content["acquisition_routing"]["c3_authorized"])
 
     async def test_mcp_exposes_only_the_authorized_v0_tools(self) -> None:
         async with Client(mcp) as client:
@@ -167,6 +249,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
                 "browser_doctor",
                 "artifact_ocr",
                 "document_ocr",
+                "browser_acquire",
                 "browser_fetch",
                 "browser_render",
                 "browser_use",
@@ -192,7 +275,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
             async with Client(params) as client:
                 tools = await client.list_tools()
                 result = await client.call_tool("browser_capabilities", {})
-        self.assertEqual(len(tools.tools), 11)
+        self.assertEqual(len(tools.tools), 12)
         self.assertFalse(result.is_error)
         self.assertEqual(result.structured_content["local_agent_adapter"]["transport"], "stdio")
 

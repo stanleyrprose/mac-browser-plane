@@ -15,6 +15,7 @@ AUTHORIZED_TOOLS = {
     "browser_doctor",
     "artifact_ocr",
     "document_ocr",
+    "browser_acquire",
     "browser_fetch",
     "browser_render",
     "browser_use",

@@ -56,6 +56,8 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertFalse(manifest["network"]["southeast_asia"])
         self.assertFalse(manifest["network"]["china"])
         self.assertTrue(manifest["capabilities"]["c0_fetch"])
+        self.assertTrue(manifest["capabilities"]["public_read_acquisition_router"])
+        self.assertFalse(manifest["capabilities"]["browser_acquire_signalforge_provider_authorized"])
         self.assertTrue(manifest["capabilities"]["c1_render"])
         self.assertTrue(manifest["capabilities"]["c1_content_quality_gate"])
         self.assertFalse(manifest["capabilities"]["c1_generic_interaction"])
@@ -99,6 +101,13 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertTrue(manifest["local_agent_adapter"]["generic_interaction"])
         self.assertFalse(manifest["local_agent_adapter"]["arbitrary_javascript"])
         self.assertFalse(manifest["local_agent_adapter"]["raw_cdp"])
+        self.assertTrue(manifest["local_agent_adapter"]["public_read_acquisition_router"])
+        self.assertEqual(manifest["discovery"]["primary_acquisition_tool"], "browser_acquire")
+        self.assertEqual(manifest["acquisition_routing"]["policy"], "public_read_auto_v1")
+        self.assertEqual(manifest["acquisition_routing"]["sequence"], ["C0_FETCH", "C1_RENDER"])
+        self.assertFalse(manifest["acquisition_routing"]["signalforge_provider_authorized"])
+        self.assertFalse(manifest["acquisition_routing"]["c2_authorized"])
+        self.assertFalse(manifest["acquisition_routing"]["c3_authorized"])
 
 
 class DBTests(unittest.TestCase):

@@ -3,12 +3,14 @@ from __future__ import annotations
 import importlib.resources
 import ipaddress
 import json
+import time
 from typing import Any
 from urllib.parse import urlsplit
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
+from .acquisition_router import ACQUISITION_POLICY, acquisition_outcome, attempt_summary, c0_render_trigger
 from .config import RuntimePaths
 from .db import JobStore, RuntimeDB
 from .doctor import Doctor
@@ -21,7 +23,7 @@ mcp = MCPServer(
     "Mac Browser Plane",
     instructions=(
         "Local stdio-only adapter over the existing Mac Browser Plane runtime. "
-        "Use browser_fetch for strict-TLS HTTP acquisition, browser_render for deterministic "
+        "Use browser_acquire for automatic read-only public-content acquisition across C0 and bounded C1, browser_fetch for C0-only strict-TLS HTTP acquisition, browser_render for deterministic "
         "engine-routed JS/DOM rendering, browser_inspect for Chrome read-only diagnostics, browser_use for "
         "multi-step Playwright interaction with internal engine routing, artifact_ocr for runtime-owned images, and document_ocr "
         "for networkless Burmese/English OCR over runtime-owned PDF evidence. OCR output is evidence enrichment only; critical business fields require "
@@ -307,6 +309,140 @@ def document_ocr(artifact_path: str, psm: int = 6, max_pages: int = 12) -> dict[
         return ocr_document(paths, artifact_path, psm=psm, max_pages=max_pages)
     except DocumentOCRError as exc:
         raise ToolError(str(exc)) from exc
+
+
+def _acquisition_response(
+    selected: dict[str, Any],
+    *,
+    selected_capability: str,
+    attempts: list[dict[str, Any]],
+    render_trigger: str | None,
+    render_attempted: bool,
+    render_skipped_reason: str | None = None,
+) -> dict[str, Any]:
+    response = dict(selected)
+    response["acquisition_policy"] = ACQUISITION_POLICY
+    response["acquisition_outcome"] = acquisition_outcome(selected)
+    response["selected_capability"] = selected_capability
+    response["attempts"] = attempts
+    response["acquisition_route"] = {
+        "policy": ACQUISITION_POLICY,
+        "authorization": "explicit_browser_acquire_call",
+        "c0_first": True,
+        "render_fallback_authorized": True,
+        "render_trigger": render_trigger,
+        "render_fallback_attempted": render_attempted,
+        "render_skipped_reason": render_skipped_reason,
+        "c2_authorized": False,
+        "c3_authorized": False,
+    }
+    return response
+
+
+def _acquire_public(
+    url: str,
+    queue_timeout_sec: int = 60,
+    fetch_max_run_sec: int = 60,
+    render_max_run_sec: int = 120,
+    client_timeout_sec: int = 300,
+) -> dict[str, Any]:
+    target = _validate_url(url)
+    queue_timeout_sec = _bounded_seconds(
+        queue_timeout_sec,
+        name="queue_timeout_sec",
+        minimum=1,
+        maximum=600,
+    )
+    fetch_max_run_sec = _bounded_seconds(
+        fetch_max_run_sec,
+        name="fetch_max_run_sec",
+        minimum=1,
+        maximum=600,
+    )
+    render_max_run_sec = _bounded_seconds(
+        render_max_run_sec,
+        name="render_max_run_sec",
+        minimum=1,
+        maximum=600,
+    )
+    client_timeout_sec = _bounded_seconds(
+        client_timeout_sec,
+        name="client_timeout_sec",
+        minimum=1,
+        maximum=900,
+    )
+
+    started = time.monotonic()
+    fetch_wait_budget = min(
+        client_timeout_sec,
+        queue_timeout_sec + fetch_max_run_sec + 15,
+    )
+    fetch = _submit_and_wait(
+        task_type=TaskType.FETCH,
+        url=target,
+        queue_timeout_sec=queue_timeout_sec,
+        max_run_sec=fetch_max_run_sec,
+        client_timeout_sec=max(1, fetch_wait_budget),
+        evidence_policy="always",
+    )
+    attempts = [attempt_summary("C0_FETCH", fetch)]
+    trigger = c0_render_trigger(fetch)
+    if trigger is None:
+        return _acquisition_response(
+            fetch,
+            selected_capability="C0_FETCH",
+            attempts=attempts,
+            render_trigger=None,
+            render_attempted=False,
+        )
+
+    remaining = int(client_timeout_sec - (time.monotonic() - started))
+    if remaining < 1:
+        return _acquisition_response(
+            fetch,
+            selected_capability="C0_FETCH",
+            attempts=attempts,
+            render_trigger=trigger,
+            render_attempted=False,
+            render_skipped_reason="client_timeout_budget_exhausted",
+        )
+
+    render = _submit_and_wait(
+        task_type=TaskType.AUTOMATE,
+        url=target,
+        profile="public-research",
+        profile_mode=ProfileMode.EPHEMERAL,
+        queue_timeout_sec=queue_timeout_sec,
+        max_run_sec=render_max_run_sec,
+        client_timeout_sec=remaining,
+        evidence_policy="on_failure",
+    )
+    attempts.append(attempt_summary("C1_RENDER", render))
+    return _acquisition_response(
+        render,
+        selected_capability="C1_RENDER",
+        attempts=attempts,
+        render_trigger=trigger,
+        render_attempted=True,
+    )
+
+
+@mcp.tool()
+def browser_acquire(
+    url: str,
+    queue_timeout_sec: int = 60,
+    fetch_max_run_sec: int = 60,
+    render_max_run_sec: int = 120,
+    client_timeout_sec: int = 300,
+) -> dict[str, Any]:
+    """Reliably read a public URL: C0 first, then bounded read-only C1 only when conservative evidence requires rendering."""
+    return _acquire_public(
+        url=url,
+        queue_timeout_sec=queue_timeout_sec,
+        fetch_max_run_sec=fetch_max_run_sec,
+        render_max_run_sec=render_max_run_sec,
+        client_timeout_sec=client_timeout_sec,
+    )
 
 
 @mcp.tool()

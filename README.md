@@ -12,6 +12,7 @@ The current machine-readable contract is `src/browser_plane/capabilities.json`.
 
 | Capability | Status | Primary surface |
 | --- | --- | --- |
+| Public Read Acquisition Router | COMPLETE / LOCAL | `browser_acquire` |
 | C0 Fetch | COMPLETE | `browser_fetch` |
 | C1 Render | COMPLETE | `browser_render` |
 | C2 Read-only Inspect | COMPLETE | `browser_inspect` |
@@ -56,6 +57,7 @@ Engine choice is normally internal to Browser Plane.
 
 | Work type | Current route |
 | --- | --- |
+| Public read acquisition | `browser_acquire`: C0 first; bounded ephemeral C1 only on conservative render evidence |
 | C0 HTTP/HTTPS fetch | system `/usr/bin/curl` first; bounded `curl_cffi` Chrome-impersonated retry only on explicit challenge/client-compat evidence |
 | C1 ephemeral JS/DOM render | Lightpanda first, then safe Chrome fallback |
 | C1 persistent profile | Chrome |
@@ -64,7 +66,7 @@ Engine choice is normally internal to Browser Plane.
 | fingerprint-sensitive ephemeral C1/C3 | Camoufox only when explicitly/source-evidence selected |
 | direct-CDP Chromium validation (C1) | nodriver only when explicitly selected; ephemeral only in v1 |
 
-Important fallback boundary: C0 may retry once inside the same read-only fetch capability using `curl_cffi` only on explicit challenge/client-compat evidence; this does not authorize Browser escalation. Automatic Lightpanda -> Chrome fallback is limited to side-effect-safe ephemeral C1 work. Camoufox and nodriver have no automatic cross-engine replay fallback.
+Important fallback boundary: `browser_fetch` remains C0-only. A caller that explicitly chooses `browser_acquire` authorizes one bounded read-only C0 -> C1 acquisition path; plain auth/rate-limit/network failures do not trigger C1. C0 may retry once inside the same fetch capability using `curl_cffi` only on explicit challenge/client-compat evidence. Automatic Lightpanda -> Chrome fallback remains limited to side-effect-safe ephemeral C1 work. Camoufox and nodriver have no automatic cross-engine replay fallback.
 
 See `docs/C0_IMPERSONATED_FETCH_ROUTING.md`, `docs/LIGHTPANDA_ENGINE_ROUTING.md`, `docs/CAMOUFOX_ENGINE_ROUTING.md`, and `docs/NODRIVER_ENGINE_ROUTING.md`.
 
@@ -155,7 +157,7 @@ Production executable:
 ~/agent-browser-runtime/app/venv/bin/mac-browser-mcp
 ```
 
-The current MCP exposes eleven tools: capabilities, doctor, artifact OCR, document OCR, fetch, render, inspect, browser use, job status, job result, and job cancel. It is stdio-only and does not start a network listener. `artifact_ocr` and `document_ocr` are orthogonal, networkless evidence-processing capabilities rather than C4 browser levels. `document_ocr` rasterizes runtime-owned PDFs with macOS PDFKit and OCRs the bounded pages with the same fixed `mya+eng` Tesseract profile. OCR output remains enrichment, not authoritative business truth.
+The current MCP exposes twelve tools: capabilities, doctor, artifact OCR, document OCR, public-read acquire, fetch, render, inspect, browser use, job status, job result, and job cancel. It is stdio-only and does not start a network listener. `artifact_ocr` and `document_ocr` are orthogonal, networkless evidence-processing capabilities rather than C4 browser levels. `document_ocr` rasterizes runtime-owned PDFs with macOS PDFKit and OCRs the bounded pages with the same fixed `mya+eng` Tesseract profile. OCR output remains enrichment, not authoritative business truth.
 
 Recommended discovery sequence:
 
@@ -164,7 +166,8 @@ browser_capabilities
 browser_doctor      # when readiness matters
 artifact_ocr        # orthogonal local evidence OCR (PNG/JPEG, mya+eng)
 document_ocr        # runtime-owned PDF -> PDFKit page images -> mya+eng OCR
-browser_fetch       # C0
+browser_acquire     # preferred public read: C0 -> bounded read-only C1 when evidence requires it
+browser_fetch       # strict C0-only
 browser_render      # C1
 browser_inspect     # C2
 browser_use         # C3

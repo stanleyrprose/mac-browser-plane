@@ -72,6 +72,22 @@ Networkless OCR over an already-acquired runtime-owned PDF. macOS PDFKit rasteri
 
 The result includes PDF SHA-256, page count, processed-page count, per-page OCR text/confidence/image SHA, combined OCR text, and whether the page limit truncated the document. The OCR phase performs no network I/O and intermediate page images are not retained. Provider authorization is controlled separately by the SignalForge Provider Invocation Contract.
 
+### `browser_acquire`
+
+Preferred local public-read acquisition surface when the caller wants reliable content but does not want to choose C0 vs C1.
+
+| Field | Type | Default | Bounds / meaning |
+| --- | --- | --- | --- |
+| `url` | string | required | absolute public HTTP(S) URL |
+| `queue_timeout_sec` | int | 60 | 1–600 |
+| `fetch_max_run_sec` | int | 60 | 1–600 |
+| `render_max_run_sec` | int | 120 | 1–600 |
+| `client_timeout_sec` | int | 300 | 1–900 total caller budget |
+
+Routing is `C0_FETCH` first, then at most one ephemeral `C1_RENDER` when conservative render evidence is present. Plain auth/rate-limit/network/certificate failures do not authorize C1; successful `curl_cffi` recovery remains C0. The result exposes `selected_capability`, `acquisition_outcome`, `attempts`, and `acquisition_route`. C2/C3 are never authorized by this tool.
+
+`browser_acquire` is currently authorized for local MCP/CodexPro use only. It is not part of the SignalForge Provider Invocation Contract.
+
 ### `browser_fetch`
 
 C0 strict-TLS HTTP(S) acquisition.

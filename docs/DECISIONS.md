@@ -85,3 +85,13 @@ Detailed evidence: `PIC-R4-PRODUCTION-CLOSURE-2026-09-08.md` and PIC contract do
 **Why:** this fills the cost/reliability gap between ordinary HTTP and a real browser while preserving D-010. The retry stays inside read-only C0 GET acquisition, keeps strict TLS and a 1 MB body bound, and does not execute JavaScript or authorize C1/C2/C3.
 
 Detailed contract: `C0_IMPERSONATED_FETCH_ROUTING.md`.
+
+## D-013 — Explicit `browser_acquire` may route C0 -> bounded read-only C1
+
+**Decision:** add `browser_acquire` as a local composite public-read capability. Calling it explicitly authorizes the acquisition router to attempt C0 first and then one ephemeral read-only C1 render only when conservative render evidence is present. The existing `browser_fetch` contract remains C0-only.
+
+**Why:** callers that only need reliable public content should not need to understand transport or browser-engine details. This preserves D-010 because a failed direct request alone still does not authorize Browser execution: the caller must select the composite acquisition capability, and the router still requires a narrow render trigger. Plain auth/rate-limit/network/certificate failures do not trigger C1, successful `curl_cffi` recovery does not render again, and C2/C3 remain outside the router.
+
+**Remote boundary:** the SignalForge Provider Invocation Contract is unchanged; `browser_acquire` is local MCP/CodexPro only until a separate provider review explicitly authorizes it.
+
+Detailed contract: `ACQUISITION_ROUTER.md`.
