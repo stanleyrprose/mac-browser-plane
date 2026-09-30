@@ -122,7 +122,9 @@ Real-source checks established the escalation boundary before adding more mitmpr
 - local deterministic A/B verification proved a challenge response from system curl can be recovered by the impersonated transport while a plain `403` remains on system curl;
 - targeted C0 regression: **8/8 PASS**;
 - full repository regression after integration: **111/111 PASS** plus successful compileall;
-- no Provider contract, MCP tool count, regional egress, proxy, Browser engine, or C1/C2/C3 behavior was changed.
+- no Provider contract, MCP tool count, regional egress, proxy, Browser engine, or C1/C2/C3 behavior was changed;
+- production deployment of merged revision `28c41998dddd449da7bc47a9a62666d6b5252b96` is **VERIFIED / CLOSED**: post-merge main CI passed, production Doctor is `READY`, `curl_cffi 0.16.3` is installed, direct-path and challenge-path live smokes both succeeded, and no stale leases/process-ownership residue remained;
+- closure evidence and rollback details: `docs/C0-CURL-CFFI-PRODUCTION-CLOSURE-2026-09-30.md`.
 
 ## 3. Production invocation modes
 
