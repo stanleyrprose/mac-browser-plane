@@ -64,7 +64,7 @@ The runtime is not:
 
 `mac-browser-mcp` is stdio-only. The MCP process is an adapter over the existing JobStore/worker and does not become a second Browser worker.
 
-The current local MCP surface contains eleven tools: capabilities, doctor, artifact OCR, document OCR, fetch, render, inspect, browser use, status, result, cancel. `artifact_ocr` remains local image evidence OCR. `document_ocr` adds runtime-owned PDF rasterization through macOS PDFKit followed by the same networkless Tesseract `mya+eng` OCR. SignalForge remote use is separately constrained by its Provider Invocation Contract.
+The current local MCP surface contains twelve tools: capabilities, doctor, artifact OCR, document OCR, public-read acquire, fetch, render, inspect, browser use, status, result, cancel. `artifact_ocr` remains local image evidence OCR. `document_ocr` adds runtime-owned PDF rasterization through macOS PDFKit followed by the same networkless Tesseract `mya+eng` OCR. SignalForge remote use is separately constrained by its Provider Invocation Contract.
 
 ### 4.3 SignalForge Provider Agent
 
@@ -82,6 +82,17 @@ Mac Provider Agent
 No Browser, MCP, CDP, or Provider API listener is opened on the Mac. Remote authorization is source/capability/URL specific and the Provider contract may intentionally expose a narrower C3 subset than the local MCP.
 
 ## 5. Capability layers
+
+### Public Read Acquisition Router
+
+- `browser_acquire` is a local read-only composite capability;
+- its invocation explicitly authorizes only the bounded `C0_FETCH -> C1_RENDER` path;
+- C0 is always attempted first;
+- C1 is attempted only on conservative evidence: unresolved supported challenge, empty HTML body, explicit JavaScript-required shell, or low-text SPA shell;
+- plain `401/403/429`, generic `5xx`, DNS/connection/timeout, and certificate failures do not authorize C1;
+- successful `curl_cffi` recovery remains C0 and does not render again;
+- C2 and C3 are never authorized by this router;
+- SignalForge Provider Invocation Contract is unchanged and does not expose this composite capability yet.
 
 ### C0 Fetch
 

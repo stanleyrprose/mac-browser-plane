@@ -14,6 +14,7 @@
     "c0_fetch": true,
     "c0_raw_artifact": true,
     "c0_impersonated_fetch": true,
+    "public_read_acquisition_router": true,
     "c1_render": true,
     "c1_content_quality_gate": true,
     "c1_rendered_dom_artifact": true,
@@ -36,6 +37,7 @@
     "document_ocr": true,
     "artifact_ocr_signalforge_provider_authorized": false,
     "document_ocr_signalforge_provider_authorized": true,
+    "browser_acquire_signalforge_provider_authorized": false,
     "remote_invocation": true,
     "headed_human_takeover": false,
     "c3_actions": [
@@ -160,12 +162,14 @@
     "network_listener": false,
     "generic_interaction": true,
     "arbitrary_javascript": false,
-    "raw_cdp": false
+    "raw_cdp": false,
+    "public_read_acquisition_router": true
   },
   "discovery": {
     "status": "operational",
     "recommended_entrypoint": "browser_capabilities",
     "readiness_tool": "browser_doctor",
+    "primary_acquisition_tool": "browser_acquire",
     "primary_interaction_tool": "browser_use",
     "mcp_server": "mac-browser-plane",
     "mcp_transport": "stdio",
@@ -177,6 +181,7 @@
       "docs/IMPLEMENTATION_STATUS.md"
     ],
     "capability_routing": {
+      "PUBLIC_READ_ACQUIRE": "browser_acquire",
       "C0_FETCH": "browser_fetch",
       "C1_RENDER": "browser_render",
       "C2_INSPECT": "browser_inspect",
@@ -192,6 +197,37 @@
         "pipeline": "C1_CHROME_RENDERED_DOM -> article Markdown/HTML/images/metadata"
       }
     }
+  },
+  "acquisition_routing": {
+    "policy": "public_read_auto_v1",
+    "tool": "browser_acquire",
+    "local_mcp_authorized": true,
+    "codexpro_bridge_authorized": true,
+    "signalforge_provider_authorized": false,
+    "sequence": [
+      "C0_FETCH",
+      "C1_RENDER"
+    ],
+    "render_triggers": [
+      "unresolved_explicit_browser_challenge",
+      "html_empty_body",
+      "javascript_required",
+      "spa_shell_low_text"
+    ],
+    "non_triggers": [
+      "plain_401",
+      "plain_403",
+      "plain_429",
+      "generic_5xx",
+      "dns_failure",
+      "timeout",
+      "connection_failure",
+      "certificate_verification_failure"
+    ],
+    "c1_profile": "public-research",
+    "c1_profile_mode": "ephemeral",
+    "c2_authorized": false,
+    "c3_authorized": false
   },
   "c0_transport_routing": {
     "policy": "direct_first_bounded_impersonated_fallback_v1",

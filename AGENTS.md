@@ -16,6 +16,7 @@ browser_doctor   # when readiness matters
 Current capability routing:
 
 ```text
+Public Read Acquisition -> browser_acquire (C0 first -> bounded C1 only on conservative evidence)
 C0 Fetch               -> browser_fetch
 C1 Render              -> browser_render
 C2 Read-only Inspect   -> browser_inspect
@@ -30,7 +31,7 @@ Internal engine routing is transparent to callers: C0 uses system `curl` first a
 
 `browser_use` supports deterministic `navigate`, `click`, `type`, `select`, `press`, `wait`, `snapshot`, `screenshot`, and `download`, with CSS or semantic targeting (`role`/name, `label`, `text_target`).
 
-The calling agent owns reasoning/planning. Browser Plane owns execution. Do not infer that an autonomous embedded Browser Agent exists; that remains deferred.
+For ordinary public-content reading where the caller does not care whether HTTP or read-only rendering is required, prefer `browser_acquire`. Calling `browser_acquire` explicitly authorizes only the bounded C0 -> C1 read path; it never authorizes C2/C3. `browser_fetch` remains C0-only. The calling agent owns reasoning/planning. Browser Plane owns execution. Do not infer that an autonomous embedded Browser Agent exists; that remains deferred.
 
 Machine-readable truth: `src/browser_plane/capabilities.json`.
 

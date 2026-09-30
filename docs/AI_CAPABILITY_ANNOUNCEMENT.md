@@ -68,7 +68,8 @@ browser_doctor          # when readiness matters
         ↓
 select capability
         ↓
-C0 -> browser_fetch
+Public read -> browser_acquire   # preferred when caller does not care whether C0 or C1 is needed
+C0 only -> browser_fetch
 C1 -> browser_render
 C2 -> browser_inspect
 C3 -> browser_use

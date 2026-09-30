@@ -39,16 +39,18 @@ Supported forms:
 ```bash
 mac-browser-mcp-call list
 
-mac-browser-mcp-call call browser_fetch \
+mac-browser-mcp-call call browser_acquire \
   --args-json '{"url":"https://example.com"}'
 ```
 
-The bridge is intentionally not a generic MCP launcher. It resolves only the `mac-browser-mcp` executable in the same runtime environment and permits the current ten-tool Browser Plane MCP contract:
+The bridge is intentionally not a generic MCP launcher. It resolves only the `mac-browser-mcp` executable in the same runtime environment and permits the current twelve-tool Browser Plane MCP contract:
 
 ```text
 browser_capabilities
 browser_doctor
 artifact_ocr
+document_ocr
+browser_acquire
 browser_fetch
 browser_render
 browser_use
