@@ -7,11 +7,12 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from browser_plane.config import RuntimePaths
 from browser_plane.db import JobStore, RuntimeDB
 from browser_plane.executor import BrowserExecutor
+from browser_plane.models import JobSpec, TaskType
 
 
 def make_runtime(tmp: str) -> tuple[RuntimePaths, RuntimeDB, JobStore]:
@@ -59,6 +60,49 @@ class RenderedArtifactTests(unittest.TestCase):
             self.assertEqual(result["sha256"], hashlib.sha256(payload).hexdigest())
             self.assertEqual(stat.S_IMODE(artifact.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(artifact.parent.stat().st_mode), 0o700)
+
+    def test_lightpanda_c1_persists_full_rendered_html_for_provider_reuse(self) -> None:
+        class FakeProc:
+            pid = 43210
+            returncode = 0
+
+            def communicate(self, timeout=None):
+                payload = {
+                    "http_status": 200,
+                    "url": "https://example.com",
+                    "content": "<!doctype html><html><head><title>x</title></head><body><h1>full rendered tender</h1></body></html>",
+                    "headers": [{"name": "content-type", "value": "text/html; charset=utf-8"}],
+                }
+                return json.dumps(payload), ""
+
+            def poll(self):
+                return 0
+
+            def terminate(self):
+                return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, db, _ = make_runtime(tmp)
+            executor = BrowserExecutor(paths, db)
+            executor.processes.register = Mock(return_value="proc-1")
+            executor.processes.mark_closed = Mock(return_value=True)
+            executor.leases.acquire_control = Mock(return_value=1)
+            executor.leases.release_control = Mock(return_value=True)
+            executor.jobs.get = Mock(return_value={"state": "RUNNING"})
+            spec = JobSpec(task_type=TaskType.AUTOMATE, url="https://example.com", max_run_sec=30)
+
+            with (
+                patch.object(BrowserExecutor, "_lightpanda_binary", return_value=Path("/fake/lightpanda")),
+                patch("browser_plane.executor.subprocess.Popen", return_value=FakeProc()),
+            ):
+                result = executor._run_lightpanda_fetch("job-lightpanda-artifact", spec)
+
+            artifact = Path(str(result["artifact_path"]))
+            self.assertTrue(artifact.is_file())
+            self.assertIn(b"full rendered tender", artifact.read_bytes())
+            self.assertEqual(result["sha256"], hashlib.sha256(artifact.read_bytes()).hexdigest())
+            self.assertEqual(result["body_bytes"], len(artifact.read_bytes()))
+            self.assertEqual(result["content_type"], "text/html; charset=utf-8")
 
     def test_c1_oversized_rendered_html_is_not_persisted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

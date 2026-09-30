@@ -1182,6 +1182,7 @@ class BrowserExecutor:
                 "browser_process_id": browser_process_id,
                 "browser_session_id": browser_session_id,
             }
+            result.update(self._persist_rendered_html(job_id, content))
             result.update(c1_content_quality_metadata(body_text, wait_ms=0))
             return result
         finally:

@@ -19,6 +19,7 @@ from .translation_provider import CodexOAuthTranslator, run_translation_once
 PROVIDER_ID = "mac-mm-01"
 CONTRACT_VERSION = 1
 CAPABILITY_TOOL_MAP = {
+    "PUBLIC_READ_ACQUIRE": "browser_acquire",
     "C0_FETCH": "browser_fetch",
     "C1_RENDER": "browser_render",
     "C2_INSPECT": "browser_inspect",
@@ -174,11 +175,21 @@ def mcp_arguments(request: dict[str, Any]) -> dict[str, Any]:
     capability = str(request["capability"])
     if capability == "DOCUMENT_OCR":
         raise ProviderAgentError("DOCUMENT_OCR uses the composed fetch + document_ocr path")
+    max_run = int(request["max_run_seconds"])
     base = {
         "url": str(request["requested_url"]),
-        "queue_timeout_sec": min(60, int(request["max_run_seconds"])),
-        "max_run_sec": int(request["max_run_seconds"]),
+        "queue_timeout_sec": min(60, max_run),
+        "max_run_sec": max_run,
     }
+    if capability == "PUBLIC_READ_ACQUIRE":
+        queue_budget = min(30, max(1, max_run // 3))
+        return {
+            "url": str(request["requested_url"]),
+            "queue_timeout_sec": queue_budget,
+            "fetch_max_run_sec": max(1, max_run - queue_budget),
+            "render_max_run_sec": max_run,
+            "client_timeout_sec": max_run,
+        }
     if capability == "C0_FETCH":
         base["client_timeout_sec"] = min(900, int(request["max_run_seconds"]) + 30)
         return base
@@ -307,14 +318,28 @@ def package_success(claim: dict[str, Any], mcp_payload: dict[str, Any]) -> bytes
     job = _public_job(mcp_payload)
     result = job["result"]
     capability = str(request["capability"])
-    if capability == "C0_FETCH":
+    if capability == "PUBLIC_READ_ACQUIRE":
+        if job.get("acquisition_policy") != "public_read_auto_v1":
+            raise ProviderAgentError("PUBLIC_READ_ACQUIRE acquisition policy mismatch")
+        selected = job.get("selected_capability")
+        if selected not in {"C0_FETCH", "C1_RENDER"}:
+            raise ProviderAgentError("PUBLIC_READ_ACQUIRE selected capability outside C0/C1")
+        route = job.get("acquisition_route")
+        if (
+            not isinstance(route, dict)
+            or route.get("policy") != "public_read_auto_v1"
+            or route.get("c2_authorized") is not False
+            or route.get("c3_authorized") is not False
+        ):
+            raise ProviderAgentError("PUBLIC_READ_ACQUIRE route authorization boundary violated")
+    if capability in {"C0_FETCH", "PUBLIC_READ_ACQUIRE"}:
         path = result.get("artifact_path")
         if not isinstance(path, str):
-            raise ProviderAgentError("C0 raw artifact_path missing")
+            raise ProviderAgentError(f"{capability} raw artifact_path missing")
         artifact = Path(path).read_bytes()
         media_type = str(result.get("content_type") or "application/octet-stream").split(";", 1)[0].strip()
         if result.get("sha256") != hashlib.sha256(artifact).hexdigest() or result.get("body_bytes") != len(artifact):
-            raise ProviderAgentError("C0 local artifact integrity mismatch")
+            raise ProviderAgentError(f"{capability} local artifact integrity mismatch")
     else:
         artifact = canonical_json({"job_id": job["job_id"], "state": job["state"], "result": _portable_result(result)})
         media_type = "application/json"

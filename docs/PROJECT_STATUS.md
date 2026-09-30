@@ -132,7 +132,7 @@ Real-source checks established the escalation boundary before adding more mitmpr
 - added local/CodexPro `browser_acquire` as the preferred high-level public-read surface; callers no longer need to choose C0 vs C1 for ordinary public-content acquisition;
 - routing is C0 first; C1 is authorized only by the explicit `browser_acquire` call plus conservative evidence: unresolved supported challenge, empty HTML body, explicit JavaScript-required shell, or low-text SPA shell;
 - plain `401/403/429`, generic `5xx`, DNS/connection/timeout/certificate failures do not authorize C1; successful `curl_cffi` recovery remains C0 and does not render again;
-- C2 and C3 remain explicitly outside this router; SignalForge Provider Invocation Contract remains unchanged and `browser_acquire` is not remotely provider-authorized;
+- C2 and C3 remain explicitly outside this router; the reviewed SignalForge Provider Invocation Contract now authorizes bounded `PUBLIC_READ_ACQUIRE -> browser_acquire` only for approved public HTML source/target policies;
 - PR `#60` was squash-merged as `252383bbeda354b49dcf5c47b1af41ce08301019`; push CI, PR CI, and post-merge main CI all passed;
 - post-merge main CI: **122/122 PASS** plus C0 mini soak;
 - production local MCP now exposes exactly 12 tools and `browser_capabilities.discovery.primary_acquisition_tool=browser_acquire`;

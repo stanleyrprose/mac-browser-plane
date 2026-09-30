@@ -12,7 +12,7 @@ The current machine-readable contract is `src/browser_plane/capabilities.json`.
 
 | Capability | Status | Primary surface |
 | --- | --- | --- |
-| Public Read Acquisition Router | COMPLETE / LOCAL | `browser_acquire` |
+| Public Read Acquisition Router | COMPLETE / LOCAL + SIGNALFORGE PIC | `browser_acquire` |
 | C0 Fetch | COMPLETE | `browser_fetch` |
 | C1 Render | COMPLETE | `browser_render` |
 | C2 Read-only Inspect | COMPLETE | `browser_inspect` |
@@ -20,7 +20,7 @@ The current machine-readable contract is `src/browser_plane/capabilities.json`.
 | C3 Semantic Targeting / ARIA Snapshot | COMPLETE | `browser_use` |
 | Local MCP adapter | OPERATIONAL | stdio `mac-browser-plane` |
 | Artifact OCR (`mya+eng`) | P0 COMPLETE / LOCAL | `artifact_ocr` |
-| SignalForge remote provider invocation | OPERATIONAL | `pull_ssh_v1`; reviewed Provider contract remains narrower than local MCP and does not authorize `browser_acquire` |
+| SignalForge remote provider invocation | OPERATIONAL | `pull_ssh_v1`; reviewed PIC authorizes bounded `PUBLIC_READ_ACQUIRE -> browser_acquire` for approved public HTML targets |
 | Autonomous embedded Browser Agent / LLM planner | DEFERRED | planning stays with caller |
 | Headed human takeover | DEFERRED | not exposed |
 

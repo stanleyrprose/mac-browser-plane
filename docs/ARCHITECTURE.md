@@ -92,7 +92,7 @@ No Browser, MCP, CDP, or Provider API listener is opened on the Mac. Remote auth
 - plain `401/403/429`, generic `5xx`, DNS/connection/timeout, and certificate failures do not authorize C1;
 - successful `curl_cffi` recovery remains C0 and does not render again;
 - C2 and C3 are never authorized by this router;
-- SignalForge Provider Invocation Contract is unchanged and does not expose this composite capability yet.
+- the reviewed SignalForge Provider Invocation Contract exposes this composite capability only as bounded `PUBLIC_READ_ACQUIRE` for approved source/target policies; C2/C3 remain outside the composite route.
 
 ### C0 Fetch
 
