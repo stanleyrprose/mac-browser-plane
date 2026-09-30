@@ -6,7 +6,7 @@ Mac Browser Plane is the browser execution runtime on the Mac mini. It gives aut
 
 **Status: OPERATIONAL / READY**
 
-As of **2026-09-16**, the current checkout passed the full source regression suite (**87/87 tests**) and the development runtime returned `browserctl doctor = READY` with SQLite integrity `ok`, Chrome/Lightpanda/Camoufox/nodriver available, Artifact OCR ready on Tesseract 5.5.3 + runtime-local `tessdata_best` (`mya+eng`), no stale profile leases, and no Browser Process Registry ownership residue.
+As of **2026-09-30**, merged revision `252383b` passed the full GitHub main CI suite (**122/122 tests**) plus the C0 mini soak and is deployed in production. Production `browserctl doctor = READY`, SQLite integrity is `ok`, the local MCP exposes the expected **12-tool** surface including `browser_acquire`, and there are no stale profile leases or Browser Process Registry ownership residues.
 
 The current machine-readable contract is `src/browser_plane/capabilities.json`.
 
@@ -20,7 +20,7 @@ The current machine-readable contract is `src/browser_plane/capabilities.json`.
 | C3 Semantic Targeting / ARIA Snapshot | COMPLETE | `browser_use` |
 | Local MCP adapter | OPERATIONAL | stdio `mac-browser-plane` |
 | Artifact OCR (`mya+eng`) | P0 COMPLETE / LOCAL | `artifact_ocr` |
-| SignalForge remote provider invocation | OPERATIONAL | `pull_ssh_v1` (OCR not authorized yet) |
+| SignalForge remote provider invocation | OPERATIONAL | `pull_ssh_v1`; reviewed Provider contract remains narrower than local MCP and does not authorize `browser_acquire` |
 | Autonomous embedded Browser Agent / LLM planner | DEFERRED | planning stays with caller |
 | Headed human takeover | DEFERRED | not exposed |
 

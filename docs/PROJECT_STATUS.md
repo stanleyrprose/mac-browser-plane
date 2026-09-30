@@ -9,6 +9,7 @@
 
 | Area | Status |
 | --- | --- |
+| Public Read Acquisition Router | COMPLETE / LOCAL + CODEXPRO / PRODUCTION VERIFIED |
 | C0 Fetch + raw artifact | COMPLETE / DIRECT + BOUNDED IMPERSONATED FALLBACK |
 | C1 Render | COMPLETE |
 | C2 Read-only Inspect | COMPLETE |
@@ -126,13 +127,28 @@ Real-source checks established the escalation boundary before adding more mitmpr
 - production deployment of merged revision `28c41998dddd449da7bc47a9a62666d6b5252b96` is **VERIFIED / CLOSED**: post-merge main CI passed, production Doctor is `READY`, `curl_cffi 0.16.3` is installed, direct-path and challenge-path live smokes both succeeded, and no stale leases/process-ownership residue remained;
 - closure evidence and rollback details: `docs/C0-CURL-CFFI-PRODUCTION-CLOSURE-2026-09-30.md`.
 
+### 2.7 Public Read Acquisition Router v1 — 2026-09-30
+
+- added local/CodexPro `browser_acquire` as the preferred high-level public-read surface; callers no longer need to choose C0 vs C1 for ordinary public-content acquisition;
+- routing is C0 first; C1 is authorized only by the explicit `browser_acquire` call plus conservative evidence: unresolved supported challenge, empty HTML body, explicit JavaScript-required shell, or low-text SPA shell;
+- plain `401/403/429`, generic `5xx`, DNS/connection/timeout/certificate failures do not authorize C1; successful `curl_cffi` recovery remains C0 and does not render again;
+- C2 and C3 remain explicitly outside this router; SignalForge Provider Invocation Contract remains unchanged and `browser_acquire` is not remotely provider-authorized;
+- PR `#60` was squash-merged as `252383bbeda354b49dcf5c47b1af41ce08301019`; push CI, PR CI, and post-merge main CI all passed;
+- post-merge main CI: **122/122 PASS** plus C0 mini soak;
+- production local MCP now exposes exactly 12 tools and `browser_capabilities.discovery.primary_acquisition_tool=browser_acquire`;
+- real production MCP smoke against `https://example.com` returned `SUCCEEDED`, `CONTENT_RETURNED`, selected `C0_FETCH`, HTTP `200`, transport `system_curl`, with no render fallback;
+- installed production Router was separately checked with a controlled SPA-shell result and selected bounded `C1_RENDER` with trigger `spa_shell_low_text`, while keeping C2/C3 false;
+- final production Doctor: **READY**; SQLite integrity `ok`; stale profile leases none; Browser Process Registry ownership residue none;
+- closure evidence and rollback details: `docs/ACQUISITION-ROUTER-PRODUCTION-CLOSURE-2026-09-30.md`.
+
 ## 3. Production invocation modes
 
 ### Local
 
 - `browserctl` CLI;
 - stdio MCP server `mac-browser-plane`;
-- external caller owns reasoning/planning.
+- for ordinary public-content reading, callers should prefer `browser_acquire`; engine/transport choice and bounded C0→C1 routing stay inside Browser Plane;
+- external caller still owns higher-level reasoning/planning and explicit C2/C3 decisions.
 
 ### SignalForge
 
@@ -147,6 +163,7 @@ Production is enabled using `pull_ssh_v1`:
 ## 4. Current engine policy
 
 ```text
+Public read acquire        browser_acquire: C0 -> bounded ephemeral C1 on conservative evidence
 C0                         system curl -> bounded curl_cffi fallback
 C1 ephemeral AUTO          Lightpanda -> Chrome safe fallback
 C1 persistent              Chrome
