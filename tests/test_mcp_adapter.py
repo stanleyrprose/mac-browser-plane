@@ -192,6 +192,49 @@ class MCPAdapterContractTests(unittest.TestCase):
         self.assertEqual(submit.call_args_list[1].kwargs["task_type"], TaskType.AUTOMATE)
         self.assertEqual(submit.call_args_list[1].kwargs["profile_mode"], ProfileMode.EPHEMERAL)
 
+    def test_acquire_public_bounds_render_stage_to_remaining_client_budget(self) -> None:
+        fetch = {
+            "job_id": "fetch-1",
+            "state": JobState.SUCCEEDED.value,
+            "created_at": "x",
+            "started_at": "x",
+            "finished_at": "x",
+            "failure_class": None,
+            "partial_effect_possible": False,
+            "result": {
+                "engine": "c0-fetch",
+                "transport": "system_curl",
+                "status": 200,
+                "content_type": "text/html",
+                "text_excerpt": '<html><body><div id="root"></div><script src="/app.js"></script></body></html>',
+            },
+        }
+        render = {
+            "job_id": "render-1",
+            "state": JobState.SUCCEEDED.value,
+            "created_at": "x",
+            "started_at": "x",
+            "finished_at": "x",
+            "failure_class": None,
+            "partial_effect_possible": False,
+            "result": {"engine": "c1-lightpanda", "status": 200, "text_excerpt": "ok"},
+        }
+        with (
+            patch("browser_plane.mcp_adapter._submit_and_wait", side_effect=[fetch, render]) as submit,
+            patch("browser_plane.mcp_adapter.time.monotonic", side_effect=[100.0, 150.0]),
+        ):
+            _acquire_public(
+                "https://example.com",
+                queue_timeout_sec=60,
+                fetch_max_run_sec=60,
+                render_max_run_sec=120,
+                client_timeout_sec=90,
+            )
+        render_call = submit.call_args_list[1].kwargs
+        self.assertEqual(render_call["queue_timeout_sec"], 40)
+        self.assertEqual(render_call["max_run_sec"], 40)
+        self.assertEqual(render_call["client_timeout_sec"], 40)
+
     def test_submit_and_wait_preserves_c3_use_actions(self) -> None:
         jobs = _FakeJobs()
         actions = ({"action": "snapshot", "timeout_ms": 10000},)
@@ -226,7 +269,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.structured_content["capabilities"]["artifact_ocr"])
         self.assertTrue(result.structured_content["capabilities"]["document_ocr"])
         self.assertTrue(result.structured_content["capabilities"]["public_read_acquisition_router"])
-        self.assertFalse(result.structured_content["capabilities"]["browser_acquire_signalforge_provider_authorized"])
+        self.assertTrue(result.structured_content["capabilities"]["browser_acquire_signalforge_provider_authorized"])
         self.assertFalse(result.structured_content["capabilities"]["artifact_ocr_signalforge_provider_authorized"])
         self.assertTrue(result.structured_content["capabilities"]["document_ocr_signalforge_provider_authorized"])
         self.assertEqual(result.structured_content["artifact_processing"]["ocr"]["input_scope"], "runtime_evidence_only")
@@ -234,7 +277,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.structured_content["artifact_processing"]["ocr"]["signalforge_provider_authorized"])
         self.assertTrue(result.structured_content["artifact_processing"]["document_ocr"]["signalforge_provider_authorized"])
         self.assertEqual(result.structured_content["discovery"]["primary_acquisition_tool"], "browser_acquire")
-        self.assertFalse(result.structured_content["acquisition_routing"]["signalforge_provider_authorized"])
+        self.assertTrue(result.structured_content["acquisition_routing"]["signalforge_provider_authorized"])
         self.assertFalse(result.structured_content["acquisition_routing"]["c2_authorized"])
         self.assertFalse(result.structured_content["acquisition_routing"]["c3_authorized"])
 

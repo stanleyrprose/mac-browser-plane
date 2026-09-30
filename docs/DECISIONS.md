@@ -95,3 +95,11 @@ Detailed contract: `C0_IMPERSONATED_FETCH_ROUTING.md`.
 **Remote boundary:** the SignalForge Provider Invocation Contract is unchanged; `browser_acquire` is local MCP/CodexPro only until a separate provider review explicitly authorizes it.
 
 Detailed contract: `ACQUISITION_ROUTER.md`.
+
+## D-014 — SignalForge PIC may authorize bounded `PUBLIC_READ_ACQUIRE`
+
+**Decision:** after separate remote-provider review, SignalForge may request the composite public-read capability as `PUBLIC_READ_ACQUIRE -> browser_acquire` only for source/target/URL scopes explicitly authorized by Provider Invocation Contract. Lower-level C0 remains available for diagnostic/backward-compatible use, but normal approved HTML acquisition should request `PUBLIC_READ_ACQUIRE` so Browser Plane owns the C0/C1 decision.
+
+**Why:** this removes transport/render selection from the Bangkok caller without expanding the Browser authority boundary. The Mac Provider Agent independently revalidates the PIC, constrains the total remote runtime budget, verifies that the composite route selected only C0 or C1, and fails closed if C2/C3 are ever authorized. C0 and C1 both return a complete integrity-checked HTML artifact for Provider delivery.
+
+**Non-change:** this does not authorize arbitrary URLs, regional/proxy egress, C2/C3 through the composite route, arbitrary JavaScript, or interaction. Historical R3 evidence-only and manual-provider-v0 C0 contracts remain unchanged.

@@ -25,7 +25,15 @@ C2_INSPECT      -> browser_inspect
 C3_BROWSER_USE  -> browser_use
 ```
 
-The agent does not auto-escalate capabilities.
+The R2 mapping above remains historical. The current reviewed extension also permits:
+
+```text
+PUBLIC_READ_ACQUIRE -> browser_acquire
+```
+
+`PUBLIC_READ_ACQUIRE` is one composite read-only capability rather than generic capability escalation. The Provider request explicitly authorizes the bounded Acquisition Router; Browser Plane attempts C0 first and may use one ephemeral C1 render only under the router's conservative evidence rules. The Mac Provider Agent rejects a composite result if its route authorizes C2 or C3.
+
+The agent does not otherwise auto-escalate capabilities.
 
 ## Double validation
 
@@ -63,7 +71,9 @@ screenshot
 
 C0 already produces a raw strict-TLS response artifact. R2 verifies Browser Plane SHA/byte count and sends the raw bytes.
 
-C1/C2/C3 do not currently expose a canonical rendered-DOM raw artifact. R2 therefore sends a canonical JSON evidence artifact containing the exact successful Browser Job identity/state/result returned by the existing MCP. It does not silently add DOM extraction or mutate Browser Plane execution semantics.
+Historical R2 packaging used JSON for C1/C2/C3 because C1 did not consistently expose a full rendered artifact.
+
+For the reviewed `PUBLIC_READ_ACQUIRE` extension, both possible selected routes now provide a complete integrity-checked artifact: C0 uses its raw response artifact and C1 persists `rendered.html` for both Lightpanda and Chrome. The Provider therefore returns the HTML bytes under the same wire-artifact contract regardless of whether the router selected C0 or C1. Direct lower-level C1/C2/C3 requests retain their existing packaging semantics.
 
 ## SSH transport
 

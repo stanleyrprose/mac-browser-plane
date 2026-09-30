@@ -134,6 +134,30 @@ def job_payload(result: dict, job_id="browser-job-1") -> dict:
     }
 
 
+def public_read_payload(result: dict, *, selected_capability: str = "C0_FETCH", job_id: str = "browser-job-1") -> dict:
+    payload = job_payload(result, job_id=job_id)
+    payload["structured_content"].update(
+        {
+            "acquisition_policy": "public_read_auto_v1",
+            "acquisition_outcome": "CONTENT_RETURNED",
+            "selected_capability": selected_capability,
+            "attempts": [{"capability": selected_capability, "job_id": job_id, "state": "SUCCEEDED"}],
+            "acquisition_route": {
+                "policy": "public_read_auto_v1",
+                "authorization": "explicit_browser_acquire_call",
+                "c0_first": True,
+                "render_fallback_authorized": True,
+                "render_trigger": None if selected_capability == "C0_FETCH" else "spa_shell_low_text",
+                "render_fallback_attempted": selected_capability == "C1_RENDER",
+                "render_skipped_reason": None,
+                "c2_authorized": False,
+                "c3_authorized": False,
+            },
+        }
+    )
+    return payload
+
+
 class ProviderAgentPollingTests(unittest.TestCase):
     def test_idle_poll_uses_configured_interval(self) -> None:
         self.assertEqual(_poll_delay({"status": "NO_WORK"}, 10.0), 10.0)
@@ -145,13 +169,23 @@ class ProviderAgentPollingTests(unittest.TestCase):
 
 
 class ProviderAgentValidationTests(unittest.TestCase):
-    def test_c0_c1_c2_validate_and_map_to_actual_mcp_tools(self):
-        for capability in ("C0_FETCH", "C1_RENDER", "C2_INSPECT"):
+    def test_public_read_c0_c1_c2_validate_and_map_to_actual_mcp_tools(self):
+        for capability in ("PUBLIC_READ_ACQUIRE", "C0_FETCH", "C1_RENDER", "C2_INSPECT"):
             req = request(capability)
             self.assertIs(validate_request(req, contract()), req)
             args = mcp_arguments(req)
             self.assertEqual(args["url"], URL)
             self.assertEqual(req["mcp_tool"], CAPABILITY_TOOL_MAP[capability])
+
+    def test_public_read_arguments_preserve_total_remote_budget(self):
+        req = request("PUBLIC_READ_ACQUIRE")
+        args = mcp_arguments(req)
+        self.assertEqual(args["url"], URL)
+        self.assertEqual(args["queue_timeout_sec"], 20)
+        self.assertEqual(args["fetch_max_run_sec"], 40)
+        self.assertEqual(args["render_max_run_sec"], 60)
+        self.assertEqual(args["client_timeout_sec"], 60)
+        self.assertNotIn("max_run_sec", args)
 
     def test_document_ocr_validates_but_uses_composed_execution_path(self):
         req = request("DOCUMENT_OCR")
@@ -230,6 +264,55 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             self.assertEqual(artifact, raw)
             self.assertEqual(manifest["media_type"], "text/html")
             self.assertEqual(manifest["artifact_sha256"], hashlib.sha256(raw).hexdigest())
+
+    def test_public_read_packages_selected_c0_or_c1_as_raw_html(self):
+        for selected, engine in (("C0_FETCH", "c0-fetch"), ("C1_RENDER", "c1-lightpanda")):
+            with self.subTest(selected=selected), tempfile.TemporaryDirectory() as tmp:
+                raw = f"<html>{selected}</html>".encode()
+                path = Path(tmp) / "rendered.html"
+                path.write_bytes(raw)
+                req = request("PUBLIC_READ_ACQUIRE")
+                c = claim(req)
+                result = {
+                    "engine": engine,
+                    "url": URL,
+                    "status": 200,
+                    "content_type": "text/html; charset=utf-8",
+                    "body_bytes": len(raw),
+                    "artifact_path": str(path),
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                }
+                wire = package_success(c, public_read_payload(result, selected_capability=selected))
+                line, artifact = wire.split(b"\n", 1)
+                manifest = json.loads(line)
+                self.assertEqual(artifact, raw)
+                self.assertEqual(manifest["media_type"], "text/html")
+                self.assertEqual(manifest["mcp_tool"], "browser_acquire")
+
+    def test_public_read_fails_closed_if_router_authorizes_outside_c0_c1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = b"<html>unsafe</html>"
+            path = Path(tmp) / "rendered.html"
+            path.write_bytes(raw)
+            req = request("PUBLIC_READ_ACQUIRE")
+            c = claim(req)
+            result = {
+                "engine": "c1-lightpanda",
+                "url": URL,
+                "status": 200,
+                "content_type": "text/html",
+                "body_bytes": len(raw),
+                "artifact_path": str(path),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+            payload = public_read_payload(result, selected_capability="C1_RENDER")
+            payload["structured_content"]["acquisition_route"]["c2_authorized"] = True
+            with self.assertRaisesRegex(ProviderAgentError, "authorization boundary"):
+                package_success(c, payload)
+            payload = public_read_payload(result, selected_capability="C1_RENDER")
+            payload["structured_content"]["selected_capability"] = "C2_INSPECT"
+            with self.assertRaisesRegex(ProviderAgentError, "outside C0/C1"):
+                package_success(c, payload)
 
     def test_document_ocr_packages_fetch_and_networkless_ocr_with_matching_pdf_sha(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -314,11 +397,16 @@ class ProviderAgentRunTests(unittest.TestCase):
                 plan = {"side_effect_class": "READ_ONLY_NAVIGATION", "retry_safe": False, "steps": [{"action": "snapshot"}]}
             req = request(capability, plan)
             transport = FakeTransport(claim(req))
-            if capability == "C0_FETCH":
+            if capability in {"C0_FETCH", "PUBLIC_READ_ACQUIRE"}:
                 with tempfile.TemporaryDirectory() as tmp:
                     raw = b"x"
                     p = Path(tmp) / "x.bin"; p.write_bytes(raw)
-                    payload = job_payload({"engine": "c0-fetch", "url": URL, "status": 200, "content_type": "text/html", "body_bytes": 1, "artifact_path": str(p), "sha256": hashlib.sha256(raw).hexdigest()})
+                    browser_result = {"engine": "c0-fetch", "url": URL, "status": 200, "content_type": "text/html", "body_bytes": 1, "artifact_path": str(p), "sha256": hashlib.sha256(raw).hexdigest()}
+                    payload = (
+                        public_read_payload(browser_result)
+                        if capability == "PUBLIC_READ_ACQUIRE"
+                        else job_payload(browser_result)
+                    )
                     invoker = FakeInvoker(payload)
                     result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
             else:

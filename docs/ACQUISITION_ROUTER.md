@@ -49,7 +49,7 @@ These do not by themselves authorize C1:
 - no click/type/download/interaction is performed;
 - no C2 inspect or C3 Browser Use is authorized;
 - no proxy or regional egress is added;
-- Provider Invocation Contract is unchanged and does not expose `browser_acquire` yet.
+- the reviewed SignalForge Provider Invocation Contract may expose `browser_acquire` only as `PUBLIC_READ_ACQUIRE` for approved source/target policies; Mac Provider Agent validates the selected route remains C0/C1 and fails closed on C2/C3.
 
 ## Caller guidance
 

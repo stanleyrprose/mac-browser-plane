@@ -86,7 +86,7 @@ Preferred local public-read acquisition surface when the caller wants reliable c
 
 Routing is `C0_FETCH` first, then at most one ephemeral `C1_RENDER` when conservative render evidence is present. Plain auth/rate-limit/network/certificate failures do not authorize C1; successful `curl_cffi` recovery remains C0. The result exposes `selected_capability`, `acquisition_outcome`, `attempts`, and `acquisition_route`. C2/C3 are never authorized by this tool.
 
-`browser_acquire` is currently authorized for local MCP/CodexPro use only. It is not part of the SignalForge Provider Invocation Contract.
+`browser_acquire` is authorized locally and, under the reviewed SignalForge Provider Invocation Contract, through the bounded `PUBLIC_READ_ACQUIRE` capability for approved public HTML source/target policies. Remote Provider execution remains source-, target-, URL-, size-, and runtime-budget constrained.
 
 ### `browser_fetch`
 

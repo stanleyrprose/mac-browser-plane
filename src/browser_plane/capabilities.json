@@ -37,7 +37,7 @@
     "document_ocr": true,
     "artifact_ocr_signalforge_provider_authorized": false,
     "document_ocr_signalforge_provider_authorized": true,
-    "browser_acquire_signalforge_provider_authorized": false,
+    "browser_acquire_signalforge_provider_authorized": true,
     "remote_invocation": true,
     "headed_human_takeover": false,
     "c3_actions": [
@@ -203,7 +203,7 @@
     "tool": "browser_acquire",
     "local_mcp_authorized": true,
     "codexpro_bridge_authorized": true,
-    "signalforge_provider_authorized": false,
+    "signalforge_provider_authorized": true,
     "sequence": [
       "C0_FETCH",
       "C1_RENDER"

@@ -412,8 +412,8 @@ def _acquire_public(
         url=target,
         profile="public-research",
         profile_mode=ProfileMode.EPHEMERAL,
-        queue_timeout_sec=queue_timeout_sec,
-        max_run_sec=render_max_run_sec,
+        queue_timeout_sec=max(1, min(queue_timeout_sec, remaining)),
+        max_run_sec=max(1, min(render_max_run_sec, remaining)),
         client_timeout_sec=remaining,
         evidence_policy="on_failure",
     )
