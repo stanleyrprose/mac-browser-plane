@@ -43,7 +43,7 @@ The runtime is not:
        │                │                 │
     leases         process registry    executor/router
        │                │                 │
-       │          PID + start token       ├─ C0 curl
+       │          PID + start token       ├─ C0 system curl -> bounded curl_cffi
        │                                  ├─ Lightpanda
        │                                  ├─ Chrome/Playwright
        │                                  └─ Camoufox wrapper
@@ -85,11 +85,13 @@ No Browser, MCP, CDP, or Provider API listener is opened on the Mac. Remote auth
 
 ### C0 Fetch
 
-- system `/usr/bin/curl`;
-- normal TLS validation;
+- system `/usr/bin/curl` is the default transport;
+- one bounded `curl_cffi` Chrome-impersonated retry is allowed only on explicit challenge evidence or selected TLS/HTTP-client compatibility errors;
+- plain HTTP status codes such as `403` or `429` do not authorize impersonation by themselves;
+- normal TLS validation remains mandatory; `curl_cffi` uses safe redirect handling;
 - HTTP/HTTPS only for production web fetch;
 - raw response persisted privately with SHA-256;
-- bounded text excerpt only for textual content.
+- response capture remains bounded to 1 MB and text excerpts are bounded.
 
 ### C1 Render
 
@@ -144,7 +146,7 @@ See `docs/NETWORK_TRACE_P1.md` for the operator contract and limitations.
 `BrowserEngine` is an internal execution choice, not a public MCP-level engine API.
 
 ```text
-C0                         -> curl
+C0                         -> system curl -> bounded curl_cffi fallback
 C1 ephemeral AUTO          -> Lightpanda -> Chrome safe fallback
 C1 persistent              -> Chrome
 C2                          -> Chrome

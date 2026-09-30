@@ -77,3 +77,11 @@ Detailed evidence: `PIC-R4-PRODUCTION-CLOSURE-2026-09-08.md` and PIC contract do
 **Decision:** dated closure documents record accepted state at a point in time and are not continuously rewritten. Current truth lives in `capabilities.json` + current-state docs.
 
 **Why:** preserves auditability while preventing stale stage restrictions from being mistaken for the current system.
+
+## D-012 — C0 may use bounded browser-impersonated HTTP without authorizing Browser escalation
+
+**Decision:** `browser_fetch` keeps system `/usr/bin/curl` as the default C0 transport. It may make one `curl_cffi` Chrome-impersonated retry only when the direct attempt produces explicit anti-bot challenge evidence or a selected TLS/HTTP-client compatibility error. Plain `403`, `429`, authentication failures, timeouts, DNS failures, and certificate-verification failures do not trigger the retry by themselves.
+
+**Why:** this fills the cost/reliability gap between ordinary HTTP and a real browser while preserving D-010. The retry stays inside read-only C0 GET acquisition, keeps strict TLS and a 1 MB body bound, and does not execute JavaScript or authorize C1/C2/C3.
+
+Detailed contract: `C0_IMPERSONATED_FETCH_ROUTING.md`.
