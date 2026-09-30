@@ -51,6 +51,8 @@ These do not by themselves authorize C1:
 - no proxy or regional egress is added;
 - the reviewed SignalForge Provider Invocation Contract may expose `browser_acquire` only as `PUBLIC_READ_ACQUIRE` for approved source/target policies; Mac Provider Agent validates the selected route remains C0/C1 and fails closed on C2/C3.
 
+Successful `PUBLIC_READ_ACQUIRE` Provider manifests include a bounded `route_summary` of the selected C0/C1 route and sanitized attempt health. This is observational telemetry only: it records the authority already exercised by the acquisition router and grants no additional capability or authorization.
+
 ## Caller guidance
 
 Use `browser_acquire` for: “read this public URL reliably.”

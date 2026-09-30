@@ -30,6 +30,8 @@ CAPABILITY_TOOL_MAP = {
 }
 PIC_C3_ACTIONS = {"snapshot", "navigate", "click", "wait", "type", "select", "press", "screenshot"}
 MAX_C0_BYTES = 1_000_000
+MAX_ROUTE_SUMMARY_STRING = 128
+MAX_ROUTE_SUMMARY_ATTEMPTS = 2
 
 
 class ProviderAgentError(RuntimeError):
@@ -239,6 +241,90 @@ def _portable_result(value: Any) -> Any:
             continue
         cleaned[key] = _portable_result(item)
     return cleaned
+
+
+def _route_summary_string(value: Any, *, field: str, nullable: bool = True) -> str | None:
+    if value is None and nullable:
+        return None
+    if not isinstance(value, str) or not value or len(value) > MAX_ROUTE_SUMMARY_STRING:
+        raise ProviderAgentError(f"PUBLIC_READ_ACQUIRE route metadata invalid: {field}")
+    return value
+
+
+def _public_read_route_summary(job: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    selected = job.get("selected_capability")
+    route = job.get("acquisition_route")
+    if selected not in {"C0_FETCH", "C1_RENDER"} or not isinstance(route, dict):
+        raise ProviderAgentError("PUBLIC_READ_ACQUIRE route metadata invalid")
+
+    render_attempted = route.get("render_fallback_attempted")
+    if not isinstance(render_attempted, bool):
+        raise ProviderAgentError("PUBLIC_READ_ACQUIRE route metadata invalid: render_fallback_attempted")
+
+    transport_route = result.get("transport_route")
+    if transport_route is not None and not isinstance(transport_route, dict):
+        raise ProviderAgentError("PUBLIC_READ_ACQUIRE route metadata invalid: transport_route")
+    selected_transport_value = (
+        transport_route.get("selected")
+        if isinstance(transport_route, dict) and transport_route.get("selected") is not None
+        else result.get("transport")
+    )
+
+    raw_attempts = job.get("attempts")
+    if not isinstance(raw_attempts, list) or not 1 <= len(raw_attempts) <= MAX_ROUTE_SUMMARY_ATTEMPTS:
+        raise ProviderAgentError("PUBLIC_READ_ACQUIRE route metadata invalid: attempts")
+    raw_capabilities = [
+        attempt.get("capability") if isinstance(attempt, dict) else None
+        for attempt in raw_attempts
+    ]
+    if selected == "C0_FETCH":
+        if raw_capabilities != ["C0_FETCH"] or render_attempted is not False:
+            raise ProviderAgentError("PUBLIC_READ_ACQUIRE route metadata invalid: C0 sequence")
+    elif (
+        raw_capabilities != ["C0_FETCH", "C1_RENDER"]
+        or render_attempted is not True
+        or route.get("render_trigger") is None
+    ):
+        raise ProviderAgentError("PUBLIC_READ_ACQUIRE route metadata invalid: C1 sequence")
+    attempts: list[dict[str, Any]] = []
+    for index, attempt in enumerate(raw_attempts):
+        if not isinstance(attempt, dict) or attempt.get("capability") not in {"C0_FETCH", "C1_RENDER"}:
+            raise ProviderAgentError(f"PUBLIC_READ_ACQUIRE route metadata invalid: attempts[{index}]")
+        http_status = attempt.get("http_status")
+        if http_status is not None and (not isinstance(http_status, int) or isinstance(http_status, bool)):
+            raise ProviderAgentError(f"PUBLIC_READ_ACQUIRE route metadata invalid: attempts[{index}].http_status")
+        attempts.append(
+            {
+                "capability": attempt["capability"],
+                "state": _route_summary_string(attempt.get("state"), field=f"attempts[{index}].state", nullable=False),
+                "http_status": http_status,
+                "engine": _route_summary_string(attempt.get("engine"), field=f"attempts[{index}].engine"),
+                "browser_engine": _route_summary_string(
+                    attempt.get("browser_engine"), field=f"attempts[{index}].browser_engine"
+                ),
+                "transport": _route_summary_string(attempt.get("transport"), field=f"attempts[{index}].transport"),
+            }
+        )
+
+    return {
+        "schema_version": 1,
+        "policy": "public_read_auto_v1",
+        "selected_capability": selected,
+        "selected_engine": _route_summary_string(result.get("engine"), field="selected_engine"),
+        "selected_browser_engine": _route_summary_string(
+            result.get("browser_engine"), field="selected_browser_engine"
+        ),
+        "selected_transport": _route_summary_string(selected_transport_value, field="selected_transport"),
+        "render_trigger": _route_summary_string(route.get("render_trigger"), field="render_trigger"),
+        "render_fallback_attempted": render_attempted,
+        "render_skipped_reason": _route_summary_string(
+            route.get("render_skipped_reason"), field="render_skipped_reason"
+        ),
+        "attempt_count": len(attempts),
+        "attempts": attempts,
+        "c2_authorized": False,
+        "c3_authorized": False,
+    }
 
 
 def _direct_structured(payload: dict[str, Any], *, tool: str) -> dict[str, Any]:
@@ -458,6 +544,7 @@ def package_success(claim: dict[str, Any], mcp_payload: dict[str, Any]) -> bytes
     job = _public_job(mcp_payload)
     result = job["result"]
     capability = str(request["capability"])
+    route_summary: dict[str, Any] | None = None
     if capability == "PUBLIC_READ_ACQUIRE":
         if job.get("acquisition_policy") != "public_read_auto_v1":
             raise ProviderAgentError("PUBLIC_READ_ACQUIRE acquisition policy mismatch")
@@ -472,6 +559,7 @@ def package_success(claim: dict[str, Any], mcp_payload: dict[str, Any]) -> bytes
             or route.get("c3_authorized") is not False
         ):
             raise ProviderAgentError("PUBLIC_READ_ACQUIRE route authorization boundary violated")
+        route_summary = _public_read_route_summary(job, result)
     if capability in {"C0_FETCH", "PUBLIC_READ_ACQUIRE"}:
         path = result.get("artifact_path")
         if not isinstance(path, str):
@@ -507,6 +595,8 @@ def package_success(claim: dict[str, Any], mcp_payload: dict[str, Any]) -> bytes
         "artifact_bytes": len(artifact),
         "artifact_sha256": hashlib.sha256(artifact).hexdigest(),
     }
+    if route_summary is not None:
+        manifest["route_summary"] = route_summary
     return canonical_json(manifest) + b"\n" + artifact
 
 
