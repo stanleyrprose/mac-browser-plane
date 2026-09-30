@@ -308,6 +308,90 @@ class ExecutorTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
+    def test_c0_challenge_uses_impersonated_transport(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                user_agent = self.headers.get("User-Agent", "")
+                if user_agent == "mac-browser-plane/0.1":
+                    body = (
+                        b'<html><script src="/cdn-cgi/challenge-platform/'
+                        b'h/g/orchestrate/chl_page/v1"></script></html>'
+                    )
+                    self.send_response(403)
+                else:
+                    body = b"impersonated-path-ok"
+                    self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                paths, db, jobs = make_runtime(tmp)
+                url = f"http://127.0.0.1:{server.server_port}/"
+                job_id = jobs.submit(JobSpec(task_type=TaskType.FETCH, url=url))
+                self.assertTrue(Worker(paths, db).once())
+                row = jobs.get(job_id)
+                self.assertEqual(row["state"], JobState.SUCCEEDED.value)
+                result = json.loads(row["result_json"])
+                self.assertEqual(result["transport"], "curl_cffi")
+                self.assertEqual(result["status"], 200)
+                self.assertEqual(
+                    result["transport_route"]["trigger"],
+                    "cloudflare_challenge",
+                )
+                self.assertTrue(
+                    result["transport_route"]["fallback_attempted"]
+                )
+                self.assertIn(
+                    "impersonated-path-ok",
+                    result["text_excerpt"],
+                )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def test_c0_plain_403_does_not_trigger_impersonated_retry(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                body = b"Forbidden"
+                self.send_response(403)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                paths, db, jobs = make_runtime(tmp)
+                url = f"http://127.0.0.1:{server.server_port}/"
+                job_id = jobs.submit(JobSpec(task_type=TaskType.FETCH, url=url))
+                self.assertTrue(Worker(paths, db).once())
+                result = json.loads(jobs.get(job_id)["result_json"])
+                self.assertEqual(result["transport"], "system_curl")
+                self.assertEqual(result["status"], 403)
+                self.assertFalse(
+                    result["transport_route"]["fallback_attempted"]
+                )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
     def test_c0_binary_response_is_saved_as_private_artifact(self) -> None:
         payload = b"%PDF-1.7\nminimal-binary-evidence\n"
 

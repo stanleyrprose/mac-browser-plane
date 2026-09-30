@@ -51,6 +51,16 @@ class Doctor:
         chrome = Path(os.environ.get("BROWSER_PLANE_CHROME", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"))
         add("chrome", chrome.exists() and os.access(chrome, os.X_OK), str(chrome), degraded=False)
         add("playwright_python", importlib.util.find_spec("playwright") is not None, "required for C1", degraded=True)
+        curl_cffi_installed = importlib.util.find_spec("curl_cffi") is not None
+        add(
+            "curl_cffi_c0b",
+            curl_cffi_installed,
+            {
+                "installed": curl_cffi_installed,
+                "mode": "bounded_c0_impersonated_fallback",
+            },
+            degraded=True,
+        )
         configured_lightpanda = os.environ.get("BROWSER_PLANE_LIGHTPANDA")
         lightpanda_candidates = [
             configured_lightpanda,

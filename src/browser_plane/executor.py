@@ -16,6 +16,11 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
+from .c0_transport import (
+    browser_challenge_evidence,
+    curl_error_supports_impersonated_retry,
+    fetch_impersonated,
+)
 from .c3_failure_corpus import C3FailureCorpus
 from .config import RuntimePaths
 from .content_quality import c1_content_quality_metadata, require_nonempty_c1_body, wait_for_sync_c1_content
@@ -333,6 +338,7 @@ class BrowserExecutor:
                 elapsed_ms = int((time.monotonic() - started) * 1000)
                 return {
                     "engine": "c0-fetch",
+                    "transport": "urllib-data",
                     "url": response.geturl(),
                     "status": getattr(response, "status", 200),
                     "elapsed_ms": elapsed_ms,
@@ -347,6 +353,7 @@ class BrowserExecutor:
         curl = Path("/usr/bin/curl")
         if not curl.exists():
             raise CapabilityError("system curl not found: /usr/bin/curl")
+
         with tempfile.TemporaryDirectory(prefix="c0-fetch-", dir=self.paths.run_dir) as tmp:
             body_path = Path(tmp) / "body.bin"
             started = time.monotonic()
@@ -356,6 +363,10 @@ class BrowserExecutor:
                     "--silent",
                     "--show-error",
                     "--location",
+                    "--proto",
+                    "=http,https",
+                    "--proto-redir",
+                    "=http,https",
                     "--max-time",
                     str(spec.max_run_sec),
                     "--max-filesize",
@@ -373,33 +384,174 @@ class BrowserExecutor:
                 check=False,
                 timeout=spec.max_run_sec + 5,
             )
-            elapsed_ms = int((time.monotonic() - started) * 1000)
+            direct_elapsed_ms = int((time.monotonic() - started) * 1000)
+
             if proc.returncode != 0:
-                raise RuntimeError(f"curl failed ({proc.returncode}): {proc.stderr.strip()[:1000]}")
+                direct_error = proc.stderr.strip()[:1000]
+                if not curl_error_supports_impersonated_retry(proc.returncode):
+                    raise RuntimeError(
+                        f"curl failed ({proc.returncode}): {direct_error}"
+                    )
+                try:
+                    started = time.monotonic()
+                    fallback = fetch_impersonated(
+                        spec.url,
+                        timeout_sec=spec.max_run_sec,
+                    )
+                    fallback_elapsed_ms = int(
+                        (time.monotonic() - started) * 1000
+                    )
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"curl failed ({proc.returncode}): {direct_error}; "
+                        f"curl_cffi fallback failed: {type(exc).__name__}: {exc}"
+                    ) from exc
+                return self._persist_c0_response(
+                    job_id,
+                    transport="curl_cffi",
+                    url=fallback.url,
+                    status=fallback.status,
+                    elapsed_ms=fallback_elapsed_ms,
+                    content_type=fallback.content_type,
+                    body=fallback.body,
+                    transport_route={
+                        "selected": "curl_cffi",
+                        "fallback_attempted": True,
+                        "trigger": f"curl_client_compat_error_{proc.returncode}",
+                        "direct_error": direct_error,
+                    },
+                )
+
             metadata = proc.stdout.splitlines()
             if len(metadata) < 2:
                 raise RuntimeError("curl returned incomplete metadata")
             body = body_path.read_bytes() if body_path.exists() else b""
-            content_type = metadata[2] if len(metadata) > 2 and metadata[2] else None
-            result: dict[str, object] = {
-                "engine": "c0-fetch",
-                "url": metadata[1],
-                "status": int(metadata[0]),
-                "elapsed_ms": elapsed_ms,
-                "content_type": content_type,
-                "body_bytes": len(body),
-            }
-            evidence_dir = self.paths.evidence_dir / job_id
-            evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-            evidence_dir.chmod(0o700)
-            artifact_path = evidence_dir / f"response{self._artifact_suffix(content_type, metadata[1])}"
-            shutil.copy2(body_path, artifact_path)
-            artifact_path.chmod(0o600)
-            result["artifact_path"] = str(artifact_path)
-            result["sha256"] = hashlib.sha256(body).hexdigest()
-            if self._is_textual_content(content_type):
-                result["text_excerpt"] = body.decode("utf-8", errors="replace")[:4000]
-            return result
+            content_type = (
+                metadata[2] if len(metadata) > 2 and metadata[2] else None
+            )
+            status = int(metadata[0])
+            effective_url = metadata[1]
+
+            challenge = browser_challenge_evidence(status, content_type, body)
+            if challenge:
+                try:
+                    started = time.monotonic()
+                    fallback = fetch_impersonated(
+                        spec.url,
+                        timeout_sec=spec.max_run_sec,
+                    )
+                    fallback_elapsed_ms = int(
+                        (time.monotonic() - started) * 1000
+                    )
+                    fallback_challenge = browser_challenge_evidence(
+                        fallback.status,
+                        fallback.content_type,
+                        fallback.body,
+                    )
+                except Exception as exc:
+                    return self._persist_c0_response(
+                        job_id,
+                        transport="system_curl",
+                        url=effective_url,
+                        status=status,
+                        elapsed_ms=direct_elapsed_ms,
+                        content_type=content_type,
+                        body=body,
+                        transport_route={
+                            "selected": "system_curl",
+                            "fallback_attempted": True,
+                            "trigger": challenge,
+                            "fallback_error": (
+                                f"{type(exc).__name__}: {exc}"
+                            )[:1000],
+                        },
+                    )
+
+                if 200 <= fallback.status < 400 and fallback_challenge is None:
+                    return self._persist_c0_response(
+                        job_id,
+                        transport="curl_cffi",
+                        url=fallback.url,
+                        status=fallback.status,
+                        elapsed_ms=fallback_elapsed_ms,
+                        content_type=fallback.content_type,
+                        body=fallback.body,
+                        transport_route={
+                            "selected": "curl_cffi",
+                            "fallback_attempted": True,
+                            "trigger": challenge,
+                            "direct_status": status,
+                        },
+                    )
+
+                return self._persist_c0_response(
+                    job_id,
+                    transport="system_curl",
+                    url=effective_url,
+                    status=status,
+                    elapsed_ms=direct_elapsed_ms,
+                    content_type=content_type,
+                    body=body,
+                    transport_route={
+                        "selected": "system_curl",
+                        "fallback_attempted": True,
+                        "trigger": challenge,
+                        "fallback_status": fallback.status,
+                        "fallback_challenge": fallback_challenge,
+                    },
+                )
+
+            return self._persist_c0_response(
+                job_id,
+                transport="system_curl",
+                url=effective_url,
+                status=status,
+                elapsed_ms=direct_elapsed_ms,
+                content_type=content_type,
+                body=body,
+                transport_route={
+                    "selected": "system_curl",
+                    "fallback_attempted": False,
+                },
+            )
+
+    def _persist_c0_response(
+        self,
+        job_id: str,
+        *,
+        transport: str,
+        url: str,
+        status: int,
+        elapsed_ms: int,
+        content_type: str | None,
+        body: bytes,
+        transport_route: dict[str, object],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {
+            "engine": "c0-fetch",
+            "transport": transport,
+            "transport_route": transport_route,
+            "url": url,
+            "status": status,
+            "elapsed_ms": elapsed_ms,
+            "content_type": content_type,
+            "body_bytes": len(body),
+        }
+        evidence_dir = self.paths.evidence_dir / job_id
+        evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        evidence_dir.chmod(0o700)
+        artifact_path = evidence_dir / (
+            f"response{self._artifact_suffix(content_type, url)}"
+        )
+        artifact_path.write_bytes(body)
+        artifact_path.chmod(0o600)
+        result["artifact_path"] = str(artifact_path)
+        result["sha256"] = hashlib.sha256(body).hexdigest()
+        if self._is_textual_content(content_type):
+            result["text_excerpt"] = body.decode(
+                "utf-8", errors="replace"
+            )[:4000]
+        return result
 
     @staticmethod
     def _artifact_suffix(content_type: str | None, url: str) -> str:

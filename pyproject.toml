@@ -7,7 +7,7 @@ name = "mac-browser-plane"
 version = "0.1.0"
 description = "Mac-centric local browser execution plane"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["curl_cffi>=0.16.1,<0.17"]
 
 [project.optional-dependencies]
 browser = ["playwright>=1.55,<1.63"]

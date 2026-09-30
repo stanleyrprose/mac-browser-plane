@@ -13,6 +13,7 @@
   "capabilities": {
     "c0_fetch": true,
     "c0_raw_artifact": true,
+    "c0_impersonated_fetch": true,
     "c1_render": true,
     "c1_content_quality_gate": true,
     "c1_rendered_dom_artifact": true,
@@ -97,13 +98,14 @@
     "caller_selects_engine": false,
     "engines": [
       "curl",
+      "curl_cffi",
       "lightpanda",
       "chrome",
       "camoufox",
       "nodriver"
     ],
     "rules": {
-      "c0_fetch": "curl",
+      "c0_fetch": "c0_transport_router",
       "c1_ephemeral_js_dom": "lightpanda_then_chrome_fallback",
       "c1_content_quality": "nonempty_rendered_body_v1_fail_closed",
       "c1_persistent_profile": "chrome",
@@ -190,5 +192,21 @@
         "pipeline": "C1_CHROME_RENDERED_DOM -> article Markdown/HTML/images/metadata"
       }
     }
+  },
+  "c0_transport_routing": {
+    "policy": "direct_first_bounded_impersonated_fallback_v1",
+    "default_transport": "system_curl",
+    "fallback_transport": "curl_cffi_chrome_impersonation",
+    "fallback_triggers": [
+      "explicit_browser_challenge_evidence",
+      "bounded_tls_http_client_compatibility_errors"
+    ],
+    "generic_http_status_fallback": false,
+    "plain_403_fallback": false,
+    "plain_429_fallback": false,
+    "max_body_bytes": 1000000,
+    "tls_verification_required": true,
+    "curl_cffi_safe_redirects": true,
+    "browser_escalation_authorized": false
   }
 }

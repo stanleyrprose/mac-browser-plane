@@ -41,7 +41,7 @@ Authorized caller
                                 │
              ┌──────────────────┼───────────────────┐
              │                  │                   │
-          C0 curl         C1/C2/C3 Chrome      optional engines
+     C0 transport router   C1/C2/C3 Chrome      optional engines
                                                ├─ Lightpanda
                                                └─ Camoufox
                                 │
@@ -56,7 +56,7 @@ Engine choice is normally internal to Browser Plane.
 
 | Work type | Current route |
 | --- | --- |
-| C0 HTTP/HTTPS fetch | macOS `/usr/bin/curl` |
+| C0 HTTP/HTTPS fetch | system `/usr/bin/curl` first; bounded `curl_cffi` Chrome-impersonated retry only on explicit challenge/client-compat evidence |
 | C1 ephemeral JS/DOM render | Lightpanda first, then safe Chrome fallback |
 | C1 persistent profile | Chrome |
 | C2 read-only inspect | Chrome |
@@ -64,9 +64,9 @@ Engine choice is normally internal to Browser Plane.
 | fingerprint-sensitive ephemeral C1/C3 | Camoufox only when explicitly/source-evidence selected |
 | direct-CDP Chromium validation (C1) | nodriver only when explicitly selected; ephemeral only in v1 |
 
-Important fallback boundary: automatic Lightpanda -> Chrome fallback is limited to side-effect-safe ephemeral C1 work. Camoufox and nodriver have no automatic cross-engine replay fallback.
+Important fallback boundary: C0 may retry once inside the same read-only fetch capability using `curl_cffi` only on explicit challenge/client-compat evidence; this does not authorize Browser escalation. Automatic Lightpanda -> Chrome fallback is limited to side-effect-safe ephemeral C1 work. Camoufox and nodriver have no automatic cross-engine replay fallback.
 
-See `docs/LIGHTPANDA_ENGINE_ROUTING.md`, `docs/CAMOUFOX_ENGINE_ROUTING.md`, and `docs/NODRIVER_ENGINE_ROUTING.md`.
+See `docs/C0_IMPERSONATED_FETCH_ROUTING.md`, `docs/LIGHTPANDA_ENGINE_ROUTING.md`, `docs/CAMOUFOX_ENGINE_ROUTING.md`, and `docs/NODRIVER_ENGINE_ROUTING.md`.
 
 ## C3 Browser Use
 

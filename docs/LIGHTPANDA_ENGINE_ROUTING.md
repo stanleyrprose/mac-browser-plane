@@ -12,7 +12,7 @@ Lightpanda is an engine implementation detail. Callers continue to use `browser_
 
 | Capability / condition | Engine | Fallback |
 | --- | --- | --- |
-| C0 `browser_fetch` | macOS system `curl` | existing C0 behavior |
+| C0 `browser_fetch` | C0 transport router | system curl first; bounded curl_cffi retry per C0 contract |
 | C1 `browser_render`, ephemeral profile | Lightpanda when installed | Chrome on Lightpanda execution/compatibility/quality failure |
 | C1 persistent profile | Chrome | none |
 | C2 `browser_inspect` | Chrome | none |

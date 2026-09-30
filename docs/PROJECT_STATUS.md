@@ -2,14 +2,14 @@
 
 **Project:** Mac Browser Plane  
 **Current package version:** `0.1.0`  
-**Status date:** 2026-09-16
+**Status date:** 2026-09-30
 **Production state:** **OPERATIONAL / READY**
 
 ## 1. Current capability status
 
 | Area | Status |
 | --- | --- |
-| C0 Fetch + raw artifact | COMPLETE |
+| C0 Fetch + raw artifact | COMPLETE / DIRECT + BOUNDED IMPERSONATED FALLBACK |
 | C1 Render | COMPLETE |
 | C2 Read-only Inspect | COMPLETE |
 | C3 deterministic Browser Use | COMPLETE |
@@ -113,6 +113,17 @@ Real-source checks established the escalation boundary before adding more mitmpr
 - targeted regression: **40/40 PASS**; full repository regression: **94/94 PASS**;
 - no AUTO promotion, new engine, source-specific rule, provider-contract change, or TLS weakening was introduced.
 
+### 2.6 C0 browser-impersonated HTTP fallback — 2026-09-30
+
+- system `/usr/bin/curl` remains the default C0 transport;
+- `curl_cffi` Chrome impersonation is a bounded same-capability fallback, not a browser engine and not an authorization to C1/C2/C3;
+- fallback requires explicit anti-bot challenge evidence or one of the selected TLS/HTTP-client compatibility curl errors; plain `403`, `429`, DNS, timeout, connection, and certificate failures do not trigger it;
+- impersonated responses use safe redirects, strict TLS, and a 1 MB body bound;
+- local deterministic A/B verification proved a challenge response from system curl can be recovered by the impersonated transport while a plain `403` remains on system curl;
+- targeted C0 regression: **8/8 PASS**;
+- full repository regression after integration: **111/111 PASS** plus successful compileall;
+- no Provider contract, MCP tool count, regional egress, proxy, Browser engine, or C1/C2/C3 behavior was changed.
+
 ## 3. Production invocation modes
 
 ### Local
@@ -134,7 +145,7 @@ Production is enabled using `pull_ssh_v1`:
 ## 4. Current engine policy
 
 ```text
-C0                         curl
+C0                         system curl -> bounded curl_cffi fallback
 C1 ephemeral AUTO          Lightpanda -> Chrome safe fallback
 C1 persistent              Chrome
 C2                         Chrome
