@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import unquote, urlsplit
 
+from .c0_transport import curl_error_supports_impersonated_retry, fetch_impersonated
+from .config import RuntimePaths
 from .mcp_call import _call_tool
 from .translation_provider import CodexOAuthTranslator, run_translation_once
 
@@ -248,6 +250,144 @@ def _direct_structured(payload: dict[str, Any], *, tool: str) -> dict[str, Any]:
     return structured
 
 
+def _provider_document_fetch(
+    request: dict[str, Any],
+    contract: dict[str, Any],
+    *,
+    paths: RuntimePaths | None = None,
+) -> dict[str, Any]:
+    """Fetch a PIC-authorized OCR PDF using the request byte budget.
+
+    This is provider-internal. Public browser_fetch keeps its 1 MB contract;
+    DOCUMENT_OCR may fetch a larger official PDF only after source-specific
+    PIC validation has succeeded.
+    """
+
+    runtime_paths = paths or RuntimePaths.discover()
+    runtime_paths.ensure()
+    provider_request_id = str(request["provider_request_id"])
+    evidence_dir = runtime_paths.evidence_dir / f"provider-document-{provider_request_id}"
+    evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    evidence_dir.chmod(0o700)
+    body_path = evidence_dir / "response.pdf"
+    max_bytes = int(request["max_bytes"])
+    max_run = int(request["max_run_seconds"])
+    requested_url = str(request["requested_url"])
+    curl = Path("/usr/bin/curl")
+    if not curl.is_file():
+        raise ProviderAgentError("DOCUMENT_OCR system curl unavailable")
+
+    proc = subprocess.run(
+        [
+            str(curl),
+            "--silent",
+            "--show-error",
+            "--location",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--max-time",
+            str(max_run),
+            "--max-filesize",
+            str(max_bytes),
+            "--user-agent",
+            "mac-browser-plane-provider/0.1",
+            "--output",
+            str(body_path),
+            "--write-out",
+            "%{http_code}\n%{url_effective}\n%{content_type}\n",
+            requested_url,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=max_run + 5,
+    )
+
+    transport = "system_curl"
+    if proc.returncode == 0:
+        lines = proc.stdout.splitlines()
+        try:
+            status = int(lines[0]) if lines else 0
+        except ValueError as exc:
+            raise ProviderAgentError("DOCUMENT_OCR curl HTTP status invalid") from exc
+        final_url = lines[1] if len(lines) > 1 else requested_url
+        content_type = lines[2] if len(lines) > 2 and lines[2] else None
+        try:
+            body = body_path.read_bytes()
+        except OSError as exc:
+            raise ProviderAgentError(f"DOCUMENT_OCR fetched artifact unreadable: {exc}") from exc
+    else:
+        direct_error = proc.stderr.strip()[:1000]
+        if not curl_error_supports_impersonated_retry(proc.returncode):
+            raise ProviderAgentError(
+                f"DOCUMENT_OCR curl failed ({proc.returncode}): {direct_error}"
+            )
+        try:
+            fallback = fetch_impersonated(
+                requested_url,
+                timeout_sec=max_run,
+                max_bytes=max_bytes,
+            )
+        except Exception as exc:
+            raise ProviderAgentError(
+                f"DOCUMENT_OCR curl failed ({proc.returncode}): {direct_error}; "
+                f"curl_cffi fallback failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        transport = "curl_cffi"
+        status = fallback.status
+        final_url = fallback.url
+        content_type = fallback.content_type
+        body = fallback.body
+        body_path.write_bytes(body)
+
+    if len(body) > max_bytes:
+        raise ProviderAgentError("DOCUMENT_OCR fetched PDF exceeds request max_bytes")
+    if not body.startswith(b"%PDF-"):
+        raise ProviderAgentError("DOCUMENT_OCR fetched artifact is not PDF")
+    policies = contract.get("source_policies")
+    source = policies.get(request.get("source_id")) if isinstance(policies, dict) else None
+    targets = source.get("targets") if isinstance(source, dict) else None
+    target = targets.get(request.get("target_role")) if isinstance(targets, dict) else None
+    if not isinstance(target, dict):
+        raise ProviderAgentError("DOCUMENT_OCR local target policy missing")
+    final_policy = target.get("final_url_policy")
+    if not isinstance(final_policy, dict):
+        final_policy = target
+    _validate_url(final_policy, final_url)
+    if status < 200 or status >= 400:
+        raise ProviderAgentError(f"DOCUMENT_OCR HTTP status not successful: {status}")
+
+    body_path.chmod(0o600)
+    digest = hashlib.sha256(body).hexdigest()
+    return {
+        "ok": True,
+        "tool": "provider_document_fetch",
+        "is_error": False,
+        "structured_content": {
+            "job_id": f"provider-document-fetch:{provider_request_id}",
+            "state": "SUCCEEDED",
+            "created_at": str(request.get("requested_at") or ""),
+            "started_at": str(request.get("requested_at") or ""),
+            "finished_at": datetime.now(UTC).isoformat(),
+            "failure_class": None,
+            "partial_effect_possible": False,
+            "result": {
+                "engine": "provider-document-fetch",
+                "transport": transport,
+                "url": final_url,
+                "status": status,
+                "content_type": content_type,
+                "body_bytes": len(body),
+                "artifact_path": str(body_path),
+                "sha256": digest,
+                "provider_byte_budget": max_bytes,
+            },
+        },
+    }
+
+
 def package_document_ocr_success(
     claim: dict[str, Any],
     fetch_payload: dict[str, Any],
@@ -457,15 +597,7 @@ def run_once(*, transport: ProviderTransport, invoker: McpInvoker, contract: dic
         validate_claim(claim, contract, now=now)
         capability = str(request["capability"])
         if capability == "DOCUMENT_OCR":
-            fetch_payload = invoker.call(
-                "browser_fetch",
-                {
-                    "url": str(request["requested_url"]),
-                    "queue_timeout_sec": min(60, int(request["max_run_seconds"])),
-                    "max_run_sec": int(request["max_run_seconds"]),
-                    "client_timeout_sec": min(900, int(request["max_run_seconds"]) + 30),
-                },
-            )
+            fetch_payload = _provider_document_fetch(request, contract)
             fetch_job = _public_job(fetch_payload)
             artifact_path = fetch_job["result"].get("artifact_path")
             if not isinstance(artifact_path, str) or not artifact_path:
