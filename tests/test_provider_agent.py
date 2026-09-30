@@ -142,7 +142,40 @@ def public_read_payload(result: dict, *, selected_capability: str = "C0_FETCH", 
             "acquisition_policy": "public_read_auto_v1",
             "acquisition_outcome": "CONTENT_RETURNED",
             "selected_capability": selected_capability,
-            "attempts": [{"capability": selected_capability, "job_id": job_id, "state": "SUCCEEDED"}],
+            "attempts": (
+                [
+                    {
+                        "capability": "C0_FETCH",
+                        "job_id": f"{job_id}-c0",
+                        "state": "SUCCEEDED",
+                        "http_status": 200,
+                        "engine": "c0-fetch",
+                        "browser_engine": None,
+                        "transport": "system_curl",
+                    },
+                    {
+                        "capability": "C1_RENDER",
+                        "job_id": job_id,
+                        "state": "SUCCEEDED",
+                        "http_status": result.get("status"),
+                        "engine": result.get("engine"),
+                        "browser_engine": result.get("browser_engine"),
+                        "transport": result.get("transport"),
+                    },
+                ]
+                if selected_capability == "C1_RENDER"
+                else [
+                    {
+                        "capability": "C0_FETCH",
+                        "job_id": job_id,
+                        "state": "SUCCEEDED",
+                        "http_status": result.get("status"),
+                        "engine": result.get("engine"),
+                        "browser_engine": result.get("browser_engine"),
+                        "transport": result.get("transport"),
+                    }
+                ]
+            ),
             "acquisition_route": {
                 "policy": "public_read_auto_v1",
                 "authorization": "explicit_browser_acquire_call",
@@ -330,6 +363,22 @@ class ProviderDocumentFetchTests(unittest.TestCase):
 
 
 class ProviderAgentPackagingTests(unittest.TestCase):
+    manifest_keys = {
+        "contract_version",
+        "provider_request_id",
+        "provider_attempt_id",
+        "claim_token",
+        "browser_job_id",
+        "request_sha256",
+        "state",
+        "mcp_tool",
+        "final_url",
+        "http_status",
+        "media_type",
+        "artifact_bytes",
+        "artifact_sha256",
+    }
+
     def test_c0_packages_raw_artifact(self):
         with tempfile.TemporaryDirectory() as tmp:
             raw = b"<html>raw</html>"
@@ -352,6 +401,7 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             self.assertEqual(artifact, raw)
             self.assertEqual(manifest["media_type"], "text/html")
             self.assertEqual(manifest["artifact_sha256"], hashlib.sha256(raw).hexdigest())
+            self.assertEqual(set(manifest), self.manifest_keys)
 
     def test_public_read_packages_selected_c0_or_c1_as_raw_html(self):
         for selected, engine in (("C0_FETCH", "c0-fetch"), ("C1_RENDER", "c1-lightpanda")):
@@ -363,6 +413,9 @@ class ProviderAgentPackagingTests(unittest.TestCase):
                 c = claim(req)
                 result = {
                     "engine": engine,
+                    "browser_engine": "lightpanda" if selected == "C1_RENDER" else None,
+                    "transport": "system_curl" if selected == "C0_FETCH" else None,
+                    "transport_route": {"selected": "system_curl"} if selected == "C0_FETCH" else None,
                     "url": URL,
                     "status": 200,
                     "content_type": "text/html; charset=utf-8",
@@ -376,6 +429,26 @@ class ProviderAgentPackagingTests(unittest.TestCase):
                 self.assertEqual(artifact, raw)
                 self.assertEqual(manifest["media_type"], "text/html")
                 self.assertEqual(manifest["mcp_tool"], "browser_acquire")
+                summary = manifest["route_summary"]
+                self.assertEqual(set(manifest), self.manifest_keys | {"route_summary"})
+                self.assertEqual(summary["schema_version"], 1)
+                self.assertEqual(summary["policy"], "public_read_auto_v1")
+                self.assertEqual(summary["selected_capability"], selected)
+                self.assertEqual(summary["selected_engine"], engine)
+                self.assertEqual(summary["attempt_count"], 2 if selected == "C1_RENDER" else 1)
+                self.assertFalse(summary["c2_authorized"])
+                self.assertFalse(summary["c3_authorized"])
+                if selected == "C0_FETCH":
+                    self.assertEqual(summary["selected_transport"], "system_curl")
+                    self.assertFalse(summary["render_fallback_attempted"])
+                else:
+                    self.assertEqual(summary["selected_browser_engine"], "lightpanda")
+                    self.assertEqual(summary["render_trigger"], "spa_shell_low_text")
+                    self.assertTrue(summary["render_fallback_attempted"])
+
+                serialized_summary = json.dumps(summary, sort_keys=True).lower()
+                for forbidden in ("artifact_path", "url", "body", "headers", "cookies", "profile", "text"):
+                    self.assertNotIn(f'"{forbidden}"', serialized_summary)
 
     def test_public_read_fails_closed_if_router_authorizes_outside_c0_c1(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -401,6 +474,48 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             payload["structured_content"]["selected_capability"] = "C2_INSPECT"
             with self.assertRaisesRegex(ProviderAgentError, "outside C0/C1"):
                 package_success(c, payload)
+
+    def test_public_read_fails_closed_on_impossible_route_sequence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = b"<html>route</html>"
+            path = Path(tmp) / "rendered.html"
+            path.write_bytes(raw)
+            req = request("PUBLIC_READ_ACQUIRE")
+            c = claim(req)
+            result = {
+                "engine": "c1-lightpanda",
+                "browser_engine": "lightpanda",
+                "url": URL,
+                "status": 200,
+                "content_type": "text/html",
+                "body_bytes": len(raw),
+                "artifact_path": str(path),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+            payload = public_read_payload(result, selected_capability="C1_RENDER")
+            payload["structured_content"]["attempts"] = payload["structured_content"]["attempts"][1:]
+            with self.assertRaisesRegex(ProviderAgentError, "C1 sequence"):
+                package_success(c, payload)
+
+    def test_public_read_fails_closed_on_malformed_route_summary_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = b"<html>route</html>"
+            path = Path(tmp) / "rendered.html"
+            path.write_bytes(raw)
+            req = request("PUBLIC_READ_ACQUIRE")
+            result = {
+                "engine": "c0-fetch",
+                "url": URL,
+                "status": 200,
+                "content_type": "text/html",
+                "body_bytes": len(raw),
+                "artifact_path": str(path),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+            payload = public_read_payload(result)
+            payload["structured_content"]["acquisition_route"]["render_fallback_attempted"] = "false"
+            with self.assertRaisesRegex(ProviderAgentError, "render_fallback_attempted"):
+                package_success(claim(req), payload)
 
     def test_document_ocr_packages_fetch_and_networkless_ocr_with_matching_pdf_sha(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -440,6 +555,7 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             parsed = json.loads(artifact)
             self.assertEqual(manifest["media_type"], "application/json")
             self.assertEqual(manifest["browser_job_id"], "fetch-job")
+            self.assertEqual(set(manifest), self.manifest_keys)
             self.assertEqual(parsed["document_ocr"]["input_sha256"], digest)
             self.assertNotIn("artifact_path", parsed["fetch"])
 
@@ -466,6 +582,7 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             line, artifact = wire.split(b"\n", 1)
             manifest = json.loads(line)
             self.assertEqual(manifest["media_type"], "application/json")
+            self.assertEqual(set(manifest), self.manifest_keys)
             parsed = json.loads(artifact)
             self.assertEqual(parsed["result"]["engine"], engine)
 
