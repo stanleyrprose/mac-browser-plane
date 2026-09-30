@@ -14,6 +14,7 @@ from browser_plane.provider_agent import (
     ProviderAgentError,
     SshProviderTransport,
     _poll_delay,
+    _provider_document_fetch,
     canonical_json,
     mcp_arguments,
     package_document_ocr_success,
@@ -241,6 +242,93 @@ class ProviderAgentValidationTests(unittest.TestCase):
             validate_request(req, local)
 
 
+class ProviderDocumentFetchTests(unittest.TestCase):
+    def test_document_fetch_uses_pic_request_budget_above_public_c0_limit(self) -> None:
+        pdf = b"%PDF-1.4\n" + (b"x" * 1_100_000)
+        req = request("DOCUMENT_OCR")
+        req["max_bytes"] = 2_000_000
+        req["request_sha256"] = request_sha256(req)
+        local = contract()
+        local["source_policies"]["S38"]["targets"]["LISTING"]["max_bytes"] = 2_000_000
+
+        with tempfile.TemporaryDirectory() as tmp:
+            def fake_run(argv, **_kwargs):
+                output = Path(argv[argv.index("--output") + 1])
+                output.write_bytes(pdf)
+                self.assertEqual(argv[argv.index("--max-filesize") + 1], "2000000")
+                return type(
+                    "Done",
+                    (),
+                    {
+                        "returncode": 0,
+                        "stdout": f"200\n{URL}\napplication/pdf\n",
+                        "stderr": "",
+                    },
+                )()
+
+            with patch("browser_plane.provider_agent.RuntimePaths.discover") as discover, patch(
+                "browser_plane.provider_agent.subprocess.run", side_effect=fake_run
+            ):
+                root = Path(tmp)
+                from browser_plane.config import RuntimePaths
+
+                paths = RuntimePaths(
+                    root=root,
+                    state_dir=root / "state",
+                    evidence_dir=root / "evidence",
+                    profiles_dir=root / "profiles",
+                    auth_state_dir=root / "auth-state",
+                    logs_dir=root / "logs",
+                    run_dir=root / "run",
+                    db_path=root / "state" / "runtime.db",
+                )
+                discover.return_value = paths
+                payload = _provider_document_fetch(req, local)
+
+        result = payload["structured_content"]["result"]
+        self.assertEqual(result["body_bytes"], len(pdf))
+        self.assertGreater(result["body_bytes"], 1_000_000)
+        self.assertEqual(result["provider_byte_budget"], 2_000_000)
+        self.assertEqual(result["transport"], "system_curl")
+        self.assertEqual(Path(result["artifact_path"]).name, "response.pdf")
+
+    def test_document_fetch_rejects_redirect_outside_local_pic(self) -> None:
+        pdf = b"%PDF-1.4\nfixture"
+        req = request("DOCUMENT_OCR")
+        local = contract()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            def fake_run(argv, **_kwargs):
+                output = Path(argv[argv.index("--output") + 1])
+                output.write_bytes(pdf)
+                return type(
+                    "Done",
+                    (),
+                    {
+                        "returncode": 0,
+                        "stdout": "200\nhttps://example.com/escape.pdf\napplication/pdf\n",
+                        "stderr": "",
+                    },
+                )()
+
+            root = Path(tmp)
+            from browser_plane.config import RuntimePaths
+
+            paths = RuntimePaths(
+                root=root,
+                state_dir=root / "state",
+                evidence_dir=root / "evidence",
+                profiles_dir=root / "profiles",
+                auth_state_dir=root / "auth-state",
+                logs_dir=root / "logs",
+                run_dir=root / "run",
+                db_path=root / "state" / "runtime.db",
+            )
+            with patch("browser_plane.provider_agent.subprocess.run", side_effect=fake_run):
+                with self.assertRaisesRegex(ProviderAgentError, "not an approved exact target"):
+                    _provider_document_fetch(req, local, paths=paths)
+
+
 class ProviderAgentPackagingTests(unittest.TestCase):
     def test_c0_packages_raw_artifact(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -431,19 +519,6 @@ class ProviderAgentRunTests(unittest.TestCase):
 
                 def call(self, tool, arguments):
                     self.calls.append((tool, arguments))
-                    if tool == "browser_fetch":
-                        return job_payload(
-                            {
-                                "engine": "c0-fetch",
-                                "url": URL,
-                                "status": 200,
-                                "content_type": "application/pdf",
-                                "body_bytes": len(pdf),
-                                "artifact_path": str(path),
-                                "sha256": digest,
-                            },
-                            job_id="fetch-job",
-                        )
                     if tool == "document_ocr":
                         self.assertEqual(arguments["artifact_path"], str(path))
                         self.assertEqual(arguments["psm"], 6)
@@ -462,10 +537,29 @@ class ProviderAgentRunTests(unittest.TestCase):
 
                 assertEqual = unittest.TestCase().assertEqual
 
+            fetch_payload = job_payload(
+                {
+                    "engine": "provider-document-fetch",
+                    "transport": "system_curl",
+                    "url": URL,
+                    "status": 200,
+                    "content_type": "application/pdf",
+                    "body_bytes": len(pdf),
+                    "artifact_path": str(path),
+                    "sha256": digest,
+                    "provider_byte_budget": 1_000_000,
+                },
+                job_id="provider-fetch-job",
+            )
             invoker = SequenceInvoker()
-            result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
+            with patch(
+                "browser_plane.provider_agent._provider_document_fetch",
+                return_value=fetch_payload,
+            ) as provider_fetch:
+                result = run_once(transport=transport, invoker=invoker, contract=contract(), now=NOW)
             self.assertEqual(result["status"], "ACCEPTED")
-            self.assertEqual([tool for tool, _ in invoker.calls], ["browser_fetch", "document_ocr"])
+            provider_fetch.assert_called_once()
+            self.assertEqual([tool for tool, _ in invoker.calls], ["document_ocr"])
             self.assertEqual(len(transport.submitted), 1)
 
     def test_invalid_claim_fails_before_mcp_and_reports_contract_failure(self):
