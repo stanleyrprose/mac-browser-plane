@@ -18,6 +18,7 @@ _MAX_INPUT_BYTES = 25 * 1024 * 1024
 _MAX_TSV_BYTES = 4 * 1024 * 1024
 _MAX_TEXT_CHARS = 200_000
 _MAX_LINES = 1_000
+_MAX_OCR_TIMEOUT_SECONDS = 120
 _LANGUAGES = ("mya", "eng")
 
 
@@ -199,9 +200,17 @@ def _parse_tsv(tsv_text: str) -> tuple[str, list[dict[str, Any]], float | None]:
     return raw_text[:_MAX_TEXT_CHARS], public_lines, mean_confidence
 
 
-def ocr_artifact(paths: RuntimePaths, artifact_path: str, *, psm: int = 6) -> dict[str, Any]:
+def ocr_artifact(
+    paths: RuntimePaths,
+    artifact_path: str,
+    *,
+    psm: int = 6,
+    timeout_seconds: int = 60,
+) -> dict[str, Any]:
     if psm not in _ALLOWED_PSM:
         raise OCRError(f"psm must be one of: {', '.join(str(value) for value in sorted(_ALLOWED_PSM))}")
+    if not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= _MAX_OCR_TIMEOUT_SECONDS:
+        raise OCRError(f"timeout_seconds must be between 1 and {_MAX_OCR_TIMEOUT_SECONDS}")
     image_path = _resolve_evidence_image(paths, artifact_path)
     tesseract = _tesseract_path()
     if tesseract is None:
@@ -219,10 +228,10 @@ def ocr_artifact(paths: RuntimePaths, artifact_path: str, *, psm: int = 6) -> di
             capture_output=True,
             text=True,
             check=False,
-            timeout=60,
+            timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired as exc:
-        raise OCRError("Tesseract OCR timed out after 60 seconds") from exc
+        raise OCRError(f"Tesseract OCR timed out after {timeout_seconds} seconds") from exc
     except OSError as exc:
         raise OCRError(f"Tesseract execution failed: {exc}") from exc
     if proc.returncode != 0:

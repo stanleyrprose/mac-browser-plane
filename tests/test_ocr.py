@@ -99,10 +99,37 @@ class OCRContractTests(unittest.TestCase):
                 "EVIDENCE_ENRICHMENT_ONLY_CRITICAL_FIELDS_REQUIRE_SOURCE_CROSS_CHECK",
             )
             ocr_command = run.call_args_list[0].args[0]
+            self.assertEqual(run.call_args_list[0].kwargs["timeout"], 60)
             self.assertIn("tessedit_create_tsv=1", ocr_command)
             self.assertNotIn("tsv", ocr_command)
             self.assertNotIn("http://", " ".join(ocr_command))
             self.assertNotIn("https://", " ".join(ocr_command))
+
+    def test_document_style_timeout_can_be_bounded_above_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._paths(root)
+            image = paths.evidence_dir / "job-2" / "scan.png"
+            image.parent.mkdir()
+            image.write_bytes(b"\x89PNG\r\n\x1a\nfixture")
+            tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+            calls = [
+                SimpleNamespace(returncode=0, stdout=tsv, stderr=""),
+                SimpleNamespace(returncode=0, stdout="tesseract 5.5.3\n", stderr=""),
+            ]
+            with (
+                patch("browser_plane.ocr._tesseract_path", return_value=Path("/opt/homebrew/bin/tesseract")),
+                patch("browser_plane.ocr._preferred_tessdata_dir", return_value=None),
+                patch("browser_plane.ocr.subprocess.run", side_effect=calls) as run,
+            ):
+                ocr_artifact(paths, str(image), timeout_seconds=90)
+            self.assertEqual(run.call_args_list[0].kwargs["timeout"], 90)
+
+    def test_ocr_timeout_budget_fails_closed_when_out_of_bounds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._paths(Path(tmp))
+            with self.assertRaisesRegex(OCRError, "timeout_seconds"):
+                ocr_artifact(paths, "ignored.png", timeout_seconds=121)
 
     def test_unsupported_psm_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

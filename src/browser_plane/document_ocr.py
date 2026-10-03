@@ -175,7 +175,7 @@ def ocr_document(
 
         for index, image_path in enumerate(images, start=1):
             try:
-                ocr = ocr_artifact(paths, str(image_path), psm=psm)
+                ocr = ocr_artifact(paths, str(image_path), psm=psm, timeout_seconds=90)
             except OCRError as exc:
                 raise DocumentOCRError(f"OCR failed on page {index}: {exc}") from exc
             text = str(ocr.get("text") or "")
