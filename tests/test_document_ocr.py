@@ -40,7 +40,8 @@ class DocumentOCRTests(unittest.TestCase):
                 (output_dir / "page-002.png").write_bytes(b"png2")
                 return {"page_count": 2, "rasterized_pages": 2, "page_limit_truncated": False}
 
-            def fake_ocr(_paths, artifact_path: str, *, psm: int):
+            def fake_ocr(_paths, artifact_path: str, *, psm: int, timeout_seconds: int):
+                self.assertEqual(timeout_seconds, 90)
                 page = Path(artifact_path).name
                 index = 1 if page == "page-001.png" else 2
                 return {
