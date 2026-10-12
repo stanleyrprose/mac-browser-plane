@@ -354,6 +354,12 @@ class BrowserExecutor:
         if not curl.exists():
             raise CapabilityError("system curl not found: /usr/bin/curl")
 
+        # The portal's certificate exception is restricted to its exact HTTPS
+        # hostname. Redirects are forbidden while verification is disabled.
+        portal_tls_exception = (
+            urlsplit(spec.url).scheme == "https"
+            and (urlsplit(spec.url).hostname or "").lower() == "myanmar.gov.mm"
+        )
         with tempfile.TemporaryDirectory(prefix="c0-fetch-", dir=self.paths.run_dir) as tmp:
             body_path = Path(tmp) / "body.bin"
             started = time.monotonic()
@@ -362,7 +368,7 @@ class BrowserExecutor:
                     str(curl),
                     "--silent",
                     "--show-error",
-                    "--location",
+                    *(["--insecure", "--max-redirs", "0"] if portal_tls_exception else ["--location"]),
                     "--proto",
                     "=http,https",
                     "--proto-redir",
@@ -431,6 +437,8 @@ class BrowserExecutor:
             )
             status = int(metadata[0])
             effective_url = metadata[1]
+            if portal_tls_exception and not (200 <= status < 300):
+                raise RuntimeError(f"portal TLS exception rejects redirect/non-2xx: HTTP {status}")
 
             challenge = browser_challenge_evidence(status, content_type, body)
             if challenge:
