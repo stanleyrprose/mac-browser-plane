@@ -359,6 +359,11 @@ def _provider_document_fetch(
     max_bytes = int(request["max_bytes"])
     max_run = int(request["max_run_seconds"])
     requested_url = str(request["requested_url"])
+    # Official Myanmar portal only: do not propagate insecure TLS to redirects.
+    portal_tls_exception = (
+        urlsplit(requested_url).scheme == "https"
+        and (urlsplit(requested_url).hostname or "").lower() == "myanmar.gov.mm"
+    )
     curl = Path("/usr/bin/curl")
     if not curl.is_file():
         raise ProviderAgentError("DOCUMENT_OCR system curl unavailable")
@@ -368,7 +373,7 @@ def _provider_document_fetch(
             str(curl),
             "--silent",
             "--show-error",
-            "--location",
+            *(["--insecure", "--max-redirs", "0"] if portal_tls_exception else ["--location"]),
             "--proto",
             "=https",
             "--proto-redir",
@@ -399,6 +404,8 @@ def _provider_document_fetch(
         except ValueError as exc:
             raise ProviderAgentError("DOCUMENT_OCR curl HTTP status invalid") from exc
         final_url = lines[1] if len(lines) > 1 else requested_url
+        if portal_tls_exception and not (200 <= status < 300):
+            raise ProviderAgentError(f"DOCUMENT_OCR portal TLS exception rejects redirect/non-2xx: {status}")
         content_type = lines[2] if len(lines) > 2 and lines[2] else None
         try:
             body = body_path.read_bytes()
