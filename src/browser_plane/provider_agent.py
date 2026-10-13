@@ -276,7 +276,7 @@ def _provider_document_fetch(
     max_bytes = int(request["max_bytes"])
     max_run = int(request["max_run_seconds"])
     requested_url = str(request["requested_url"])
-    if image_mode and not re.search(r"\\.jpe?g(?:/|$)", unquote(urlsplit(requested_url).path), re.I):
+    if image_mode and not re.search(r"\.jpe?g(?:/|$)", unquote(urlsplit(requested_url).path), re.I):
         raise ProviderAgentError("ARTIFACT_OCR permits only S01 JPEG document paths")
     # Official Myanmar portal only: do not propagate insecure TLS to redirects.
     portal_tls_exception = (
