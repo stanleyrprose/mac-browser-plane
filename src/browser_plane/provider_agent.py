@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -27,6 +28,7 @@ CAPABILITY_TOOL_MAP = {
     "C2_INSPECT": "browser_inspect",
     "C3_BROWSER_USE": "browser_use",
     "DOCUMENT_OCR": "document_ocr",
+    "ARTIFACT_OCR": "artifact_ocr",
 }
 PIC_C3_ACTIONS = {"snapshot", "navigate", "click", "wait", "type", "select", "press", "screenshot"}
 MAX_C0_BYTES = 1_000_000
@@ -269,10 +271,13 @@ def _provider_document_fetch(
     evidence_dir = runtime_paths.evidence_dir / f"provider-document-{provider_request_id}"
     evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     evidence_dir.chmod(0o700)
-    body_path = evidence_dir / "response.pdf"
+    image_mode = request["capability"] == "ARTIFACT_OCR"
+    body_path = evidence_dir / ("response.jpg" if image_mode else "response.pdf")
     max_bytes = int(request["max_bytes"])
     max_run = int(request["max_run_seconds"])
     requested_url = str(request["requested_url"])
+    if image_mode and not re.search(r"\\.jpe?g(?:/|$)", unquote(urlsplit(requested_url).path), re.I):
+        raise ProviderAgentError("ARTIFACT_OCR permits only S01 JPEG document paths")
     # Official Myanmar portal only: do not propagate insecure TLS to redirects.
     portal_tls_exception = (
         urlsplit(requested_url).scheme == "https"
@@ -351,7 +356,10 @@ def _provider_document_fetch(
 
     if len(body) > max_bytes:
         raise ProviderAgentError("DOCUMENT_OCR fetched PDF exceeds request max_bytes")
-    if not body.startswith(b"%PDF-"):
+    if image_mode:
+        if not body.startswith(b"\xff\xd8\xff"):
+            raise ProviderAgentError("ARTIFACT_OCR fetched artifact is not JPEG")
+    elif not body.startswith(b"%PDF-"):
         raise ProviderAgentError("DOCUMENT_OCR fetched artifact is not PDF")
     policies = contract.get("source_policies")
     source = policies.get(request.get("source_id")) if isinstance(policies, dict) else None
@@ -401,6 +409,8 @@ def package_document_ocr_success(
     ocr_payload: dict[str, Any],
 ) -> bytes:
     request = claim["request"]
+    image_mode = request["capability"] == "ARTIFACT_OCR"
+    ocr_tool = "artifact_ocr" if image_mode else "document_ocr"
     fetch_job = _public_job(fetch_payload)
     fetch_result = fetch_job["result"]
     artifact_path = fetch_result.get("artifact_path")
@@ -411,7 +421,10 @@ def package_document_ocr_success(
         pdf = pdf_path.read_bytes()
     except OSError as exc:
         raise ProviderAgentError(f"DOCUMENT_OCR fetched artifact unreadable: {exc}") from exc
-    if not pdf.startswith(b"%PDF-"):
+    if image_mode:
+        if not pdf.startswith(b"\xff\xd8\xff"):
+            raise ProviderAgentError("ARTIFACT_OCR fetched artifact is not JPEG")
+    elif not pdf.startswith(b"%PDF-"):
         raise ProviderAgentError("DOCUMENT_OCR fetched artifact is not PDF")
     if fetch_result.get("sha256") != hashlib.sha256(pdf).hexdigest():
         raise ProviderAgentError("DOCUMENT_OCR fetched artifact SHA mismatch")
@@ -421,7 +434,7 @@ def package_document_ocr_success(
     if not isinstance(max_bytes, int) or len(pdf) > max_bytes:
         raise ProviderAgentError("DOCUMENT_OCR fetched PDF exceeds request max_bytes")
 
-    ocr = _direct_structured(ocr_payload, tool="document_ocr")
+    ocr = _direct_structured(ocr_payload, tool=ocr_tool)
     if ocr.get("input_sha256") != hashlib.sha256(pdf).hexdigest():
         raise ProviderAgentError("DOCUMENT_OCR OCR input SHA does not match fetched PDF")
     if ocr.get("network_access") is not False:
@@ -430,7 +443,7 @@ def package_document_ocr_success(
     artifact = canonical_json(
         {
             "fetch": _portable_result(fetch_result),
-            "document_ocr": _portable_result(ocr),
+            ocr_tool: _portable_result(ocr),
         }
     )
     if len(artifact) > int(max_bytes):
@@ -603,15 +616,15 @@ def run_once(*, transport: ProviderTransport, invoker: McpInvoker, contract: dic
     try:
         validate_claim(claim, contract, now=now)
         capability = str(request["capability"])
-        if capability == "DOCUMENT_OCR":
+        if capability in {"DOCUMENT_OCR", "ARTIFACT_OCR"}:
             fetch_payload = _provider_document_fetch(request, contract)
             fetch_job = _public_job(fetch_payload)
             artifact_path = fetch_job["result"].get("artifact_path")
             if not isinstance(artifact_path, str) or not artifact_path:
                 raise ProviderAgentError("DOCUMENT_OCR fetch artifact_path missing")
             ocr_payload = invoker.call(
-                "document_ocr",
-                {"artifact_path": artifact_path, "psm": 6, "max_pages": 12},
+                "artifact_ocr" if capability == "ARTIFACT_OCR" else "document_ocr",
+                {"artifact_path": artifact_path, "psm": 6} if capability == "ARTIFACT_OCR" else {"artifact_path": artifact_path, "psm": 6, "max_pages": 12},
             )
             wire = package_document_ocr_success(claim, fetch_payload, ocr_payload)
         else:

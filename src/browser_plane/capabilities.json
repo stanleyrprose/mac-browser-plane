@@ -35,7 +35,7 @@
     "binary_artifact": true,
     "artifact_ocr": true,
     "document_ocr": true,
-    "artifact_ocr_signalforge_provider_authorized": false,
+    "artifact_ocr_signalforge_provider_authorized": true,
     "document_ocr_signalforge_provider_authorized": true,
     "browser_acquire_signalforge_provider_authorized": true,
     "remote_invocation": true,
