@@ -452,7 +452,7 @@ class ProviderAgentPackagingTests(unittest.TestCase):
 
     def test_artifact_ocr_packages_image_evidence_without_promoting_text(self):
         with tempfile.TemporaryDirectory() as tmp:
-            image = b"\\xff\\xd8\\xff" + b"image-fixture"
+            image = bytes((255, 216, 255)) + b"image-fixture"
             path = Path(tmp) / "notice.jpg"
             path.write_bytes(image)
             digest = hashlib.sha256(image).hexdigest()
@@ -474,7 +474,7 @@ class ProviderAgentPackagingTests(unittest.TestCase):
                 "text": "tender notice",
             }}
             wire = package_document_ocr_success(c, fetch, ocr)
-            manifest, payload = wire.split(b"\\n", 1)
+            manifest, payload = wire.split(bytes((10,)), 1)
             self.assertEqual(json.loads(manifest)["media_type"], "application/json")
             result = json.loads(payload)
             self.assertEqual(result["artifact_ocr"]["input_sha256"], digest)
@@ -514,7 +514,7 @@ class ProviderAgentRunTests(unittest.TestCase):
         self.assertEqual(invoker.calls, [])
 
     def test_all_capabilities_route_to_expected_tool(self):
-        for capability in (value for value in CAPABILITY_TOOL_MAP if value != "DOCUMENT_OCR"):
+        for capability in (value for value in CAPABILITY_TOOL_MAP if value not in {"DOCUMENT_OCR", "ARTIFACT_OCR"}):
             plan = None
             if capability == "C3_BROWSER_USE":
                 plan = {"side_effect_class": "READ_ONLY_NAVIGATION", "retry_safe": False, "steps": [{"action": "snapshot"}]}
