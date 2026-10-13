@@ -450,6 +450,41 @@ class ProviderAgentPackagingTests(unittest.TestCase):
             with self.assertRaisesRegex(ProviderAgentError, "OCR input SHA"):
                 package_document_ocr_success(c, fetch, bad_ocr)
 
+    def test_artifact_ocr_packages_image_evidence_without_promoting_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            image = b"\\xff\\xd8\\xff" + b"image-fixture"
+            path = Path(tmp) / "notice.jpg"
+            path.write_bytes(image)
+            digest = hashlib.sha256(image).hexdigest()
+            c = claim(request("ARTIFACT_OCR"))
+            fetch = job_payload({
+                "engine": "provider-document-fetch",
+                "url": URL,
+                "status": 200,
+                "content_type": "image/jpeg",
+                "body_bytes": len(image),
+                "artifact_path": str(path),
+                "sha256": digest,
+            }, job_id="image-job")
+            ocr = {"structured_content": {
+                "input_sha256": digest,
+                "input_bytes": len(image),
+                "network_access": False,
+                "languages": ["mya", "eng"],
+                "text": "tender notice",
+            }}
+            wire = package_document_ocr_success(c, fetch, ocr)
+            manifest, payload = wire.split(b"\\n", 1)
+            self.assertEqual(json.loads(manifest)["media_type"], "application/json")
+            result = json.loads(payload)
+            self.assertEqual(result["artifact_ocr"]["input_sha256"], digest)
+            self.assertNotIn("document_ocr", result)
+            self.assertNotIn("artifact_path", result["fetch"])
+            with self.assertRaisesRegex(ProviderAgentError, "OCR input SHA"):
+                package_document_ocr_success(c, fetch, {
+                    "structured_content": {**ocr["structured_content"], "input_sha256": "0" * 64}
+                })
+
     def test_c1_c2_c3_package_canonical_json_evidence(self):
         for capability, engine in (
             ("C1_RENDER", "c1-playwright"),
